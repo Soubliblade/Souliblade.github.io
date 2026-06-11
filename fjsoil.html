@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>福建土壤专题图 - 空间信息实验</title>
+    <!-- Leaflet 核心库 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Font Awesome 6 图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', Roboto, 'Helvetica Neue', sans-serif;
+            overflow: hidden;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+            background: #e9f0f5;
+            z-index: 1;
+        }
+
+        /* 顶部标题 */
+        .theme-header {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            text-align: center;
+            pointer-events: none;
+        }
+        .theme-header h1 {
+            display: inline-block;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(12px);
+            padding: 8px 28px;
+            border-radius: 60px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            pointer-events: auto;
+        }
+        .theme-header h1 i {
+            margin-right: 10px;
+            color: #ffb347;
+        }
+
+        /* 右侧专题切换面板 */
+        .right-controls {
+            position: absolute;
+            top: 90px;
+            right: 20px;
+            z-index: 1000;
+            width: 240px;
+        }
+        .control-card {
+            background: rgba(25, 25, 35, 0.85);
+            backdrop-filter: blur(16px);
+            border-radius: 24px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .card-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #eee;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title i {
+            color: #ffb347;
+            font-size: 14px;
+        }
+        .theme-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .theme-btn {
+            background: rgba(0, 0, 0, 0.5);
+            border: none;
+            color: #f0f0f0;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 8px 14px;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .theme-btn i {
+            width: 24px;
+            font-size: 16px;
+            text-align: center;
+        }
+        .theme-btn:hover {
+            background: #3a4a5f;
+            transform: translateX(4px);
+            border-color: rgba(255, 180, 70, 0.5);
+        }
+        .theme-btn.active {
+            background: #e67e22;
+            color: white;
+            box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
+            border-color: #f39c12;
+        }
+
+        /* 左下角信息区 */
+        .bottom-left {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            max-width: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        /* 图例卡片（动态显示/隐藏） */
+        .legend-card {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            border-radius: 20px;
+            padding: 12px 16px;
+            color: #f0f0f0;
+            font-size: 11px;
+            font-family: monospace;
+            border-left: 3px solid #e67e22;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s;
+        }
+        .legend-card h4 {
+            margin-bottom: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 6px;
+        }
+        .legend-color {
+            width: 24px;
+            height: 14px;
+            border-radius: 3px;
+        }
+        .legend-label {
+            font-size: 11px;
+            line-height: 1.3;
+        }
+        /* 状态信息卡片 */
+        .info-card {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            padding: 8px 16px;
+            border-radius: 28px;
+            color: #f0f0f0;
+            font-size: 11px;
+            font-family: monospace;
+            border-left: 3px solid #e67e22;
+        }
+        .info-card span {
+            color: #ffaa66;
+            font-weight: bold;
+        }
+
+        /* 调试按钮 */
+        .debug-icon {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(6px);
+            border-radius: 40px;
+            padding: 6px 14px;
+            font-size: 12px;
+            color: #ccc;
+            cursor: pointer;
+            font-family: monospace;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.2s;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .debug-icon:hover {
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            transform: scale(1.02);
+        }
+
+        .error-toast {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(220, 53, 69, 0.95);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            z-index: 2000;
+            font-size: 14px;
+            text-align: center;
+            display: none;
+            white-space: nowrap;
+            font-family: monospace;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(8px);
+        }
+
+        @media (max-width: 700px) {
+            .right-controls {
+                top: 80px;
+                right: 10px;
+                width: 180px;
+            }
+            .control-card {
+                padding: 10px 12px;
+            }
+            .theme-btn {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+            .bottom-left {
+                max-width: 220px;
+            }
+            .legend-card {
+                padding: 8px 12px;
+            }
+            .legend-item {
+                gap: 8px;
+            }
+            .legend-color {
+                width: 18px;
+            }
+            .info-card {
+                font-size: 9px;
+                padding: 5px 12px;
+            }
+            .debug-icon {
+                bottom: 10px;
+                right: 10px;
+                padding: 4px 10px;
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <!-- 顶部标题 -->
+    <div class="theme-header">
+        <h1><i class="fas fa-map-marked-alt"></i> 福建省土壤专题信息系统</h1>
+    </div>
+
+    <!-- 右侧专题切换面板（无底图切换） -->
+    <div class="right-controls">
+        <div class="control-card">
+            <div class="card-title"><i class="fas fa-layer-group"></i> 专题图层</div>
+            <div class="theme-group">
+                <button id="btnCounty" data-group="soil_all_group" class="theme-btn active">
+                    <i class="fas fa-map-marker-alt"></i> 县区标签专题图
+                </button>
+                <button id="btnOrganic" data-group="organic_group" class="theme-btn">
+                    <i class="fas fa-leaf"></i> 有机质专题图
+                </button>
+                <button id="btnDensity" data-group="acid_group" class="theme-btn">
+                    <i class="fas fa-chart-line"></i> 土壤密度专题图
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 左下角：图例卡片（县区专题时隐藏） + 状态卡片 -->
+    <div class="bottom-left">
+        <div class="legend-card" id="legendPanel" style="display: block;">
+            <h4><i class="fas fa-legend"></i> 图例说明</h4>
+            <div id="legendContent">加载中...</div>
+        </div>
+        <div class="info-card">
+            <i class="fas fa-info-circle"></i> 当前专题：<span id="themeName">县区标签专题图</span> &nbsp;|&nbsp;
+            坐标：WGS84 &nbsp;|&nbsp; GeoServer
+        </div>
+    </div>
+
+    <!-- 调试按钮 -->
+    <div class="debug-icon" id="debugBtn">
+        <i class="fas fa-bug"></i> 调试信息
+    </div>
+    <div id="errorToast" class="error-toast">⚠️ 地图加载失败，查看控制台</div>
+
+    <script>
+        // ================= 配置参数 =================
+        const GEOSERVER_BASE = "http://localhost:8080/geoserver";
+        const WORKSPACE = "fjsoil";
+        const WMS_URL = `${GEOSERVER_BASE}/${WORKSPACE}/wms`;
+
+        const THEMES = {
+            soil_all_group: {
+                fullName: `${WORKSPACE}:soil_all_group`,
+                displayName: "县区标签专题图",
+                legendType: "county"   // 此类型不显示图例
+            },
+            organic_group: {
+                fullName: `${WORKSPACE}:organic_group`,
+                displayName: "有机质专题图",
+                legendType: "organic"
+            },
+            acid_group: {
+                fullName: `${WORKSPACE}:acid_group`,
+                displayName: "土壤密度专题图",
+                legendType: "density"
+            }
+        };
+
+        // 图例数据（与SLD样式匹配）
+        const densityLegend = [
+            { range: "0.346 - 0.365", color: "#30123b" },
+            { range: "0.365 - 0.383", color: "#4662d8" },
+            { range: "0.383 - 0.401", color: "#35abf8" },
+            { range: "0.401 - 0.419", color: "#1be5b5" },
+            { range: "0.419 - 0.437", color: "#74fe5d" },
+            { range: "0.437 - 0.455", color: "#c9ef34" },
+            { range: "0.455 - 0.474", color: "#fbb938" },
+            { range: "0.474 - 0.492", color: "#f56918" },
+            { range: "0.492 - 0.510", color: "#c92903" },
+            { range: "0.510 - 0.528", color: "#7a0403" }
+        ];
+        const organicLegend = [
+            { range: "28.89 - 29", color: "#30123b" },
+            { range: "29 - 30",   color: "#4777ef" },
+            { range: "30 - 31",   color: "#1bd0d5" },
+            { range: "31 - 32",   color: "#64fd6a" },
+            { range: "32 - 33",   color: "#d3e835" },
+            { range: "33 - 34",   color: "#fe992c" },
+            { range: "34 - 35",   color: "#d93807" },
+            { range: "35 - 35.34",color: "#7a0403" }
+        ];
+
+        function getLegendHtml(legendType) {
+            if (legendType === 'density') {
+                let html = '';
+                for (let item of densityLegend) {
+                    html += `<div class="legend-item">
+                                <div class="legend-color" style="background: ${item.color};"></div>
+                                <div class="legend-label">${item.range}</div>
+                             </div>`;
+                }
+                return html;
+            } else if (legendType === 'organic') {
+                let html = '';
+                for (let item of organicLegend) {
+                    html += `<div class="legend-item">
+                                <div class="legend-color" style="background: ${item.color};"></div>
+                                <div class="legend-label">${item.range}</div>
+                             </div>`;
+                }
+                return html;
+            } else {
+                return ''; // county 专题无图例
+            }
+        }
+
+        let currentThemeKey = "soil_all_group";
+        let wmsLayer = null;
+
+        // ---------- 1. 地图初始化，默认缩放到永定县，底图只使用浅色版 ----------
+        const map = L.map('map').setView([24.72, 116.73], 10);
+
+        // 浅色底图（CartoDB 浅色无标注）
+        const lightBasemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB',
+            subdomains: 'abcd',
+            maxZoom: 19,
+            minZoom: 3
+        });
+        lightBasemap.addTo(map);
+
+        // 添加比例尺控件
+        L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
+
+        // ---------- 2. 创建 WMS 图层 ----------
+        function createWMSLayer(themeKey) {
+            const theme = THEMES[themeKey];
+            if (!theme) return null;
+            return L.tileLayer.wms(WMS_URL, {
+                layers: theme.fullName,
+                format: 'image/png',
+                transparent: true,
+                version: '1.1.1',
+                srs: 'EPSG:4326',
+                attribution: '土壤专题数据 @ GeoServer',
+                opacity: 0.9,
+                tileSize: 512
+            });
+        }
+
+        wmsLayer = createWMSLayer(currentThemeKey);
+        if (wmsLayer) wmsLayer.addTo(map);
+        else showError("无法加载默认WMS图层");
+
+        // ---------- 3. 切换专题（同时控制图例显隐）----------
+        function switchTheme(themeKey) {
+            if (!THEMES[themeKey] || currentThemeKey === themeKey) return;
+            if (wmsLayer) map.removeLayer(wmsLayer);
+            const newLayer = createWMSLayer(themeKey);
+            if (newLayer) {
+                wmsLayer = newLayer;
+                wmsLayer.addTo(map);
+                currentThemeKey = themeKey;
+
+                // 更新按钮样式
+                document.querySelectorAll('.theme-btn').forEach(btn => {
+                    const group = btn.getAttribute('data-group');
+                    if (group === themeKey) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                });
+                // 更新信息栏
+                document.getElementById('themeName').innerText = THEMES[themeKey].displayName;
+                // 更新图例（县区专题隐藏图例面板，其他显示）
+                const legendType = THEMES[themeKey].legendType;
+                const legendPanel = document.getElementById('legendPanel');
+                if (legendType === 'county') {
+                    legendPanel.style.display = 'none';
+                } else {
+                    legendPanel.style.display = 'block';
+                    const legendHtml = getLegendHtml(legendType);
+                    document.getElementById('legendContent').innerHTML = legendHtml;
+                }
+                console.log(`切换到: ${THEMES[themeKey].displayName}`);
+                hideError();
+            } else {
+                showError(`无法加载专题: ${THEMES[themeKey].displayName}`);
+            }
+        }
+
+        // 初始化图例（默认县区专题，隐藏图例）
+        document.getElementById('legendPanel').style.display = 'none';
+
+        // 绑定按钮事件
+        document.getElementById('btnCounty').addEventListener('click', () => switchTheme('soil_all_group'));
+        document.getElementById('btnOrganic').addEventListener('click', () => switchTheme('organic_group'));
+        document.getElementById('btnDensity').addEventListener('click', () => switchTheme('acid_group'));
+
+        // 辅助函数
+        function showError(msg) {
+            const toast = document.getElementById('errorToast');
+            toast.style.display = 'block';
+            toast.innerText = `⚠️ ${msg}`;
+            setTimeout(() => toast.style.display = 'none', 5000);
+            console.error(msg);
+        }
+        function hideError() {
+            document.getElementById('errorToast').style.display = 'none';
+        }
+
+        // 调试按钮
+        document.getElementById('debugBtn').addEventListener('click', () => {
+            console.table({
+                "GeoServer地址": GEOSERVER_BASE,
+                "工作空间": WORKSPACE,
+                "当前图层组": THEMES[currentThemeKey].fullName,
+                "地图中心": map.getCenter(),
+                "缩放级别": map.getZoom(),
+                "测试WMS": `${WMS_URL}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities`
+            });
+            alert("调试信息已输出到控制台(F12)");
+        });
+
+        // 启动后检测GeoServer连通性
+        window.addEventListener('load', () => {
+            fetch(`${GEOSERVER_BASE}/web/`, { mode: 'no-cors' }).catch(() => console.warn("GeoServer未响应"));
+        });
+    </script>
+</body>
+</html>
