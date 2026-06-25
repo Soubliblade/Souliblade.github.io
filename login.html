@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 — 数字土壤 WebGIS</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="login-page">
+
+<div class="login-card">
+    <div class="logo">🌍</div>
+    <h1>数字土壤 WebGIS</h1>
+    <p class="subtitle">面向"数字土壤"的开源WebGIS应用平台</p>
+
+    <form id="loginForm" autocomplete="off">
+        <div class="form-group">
+            <label for="username">用户名</label>
+            <input type="text" id="username" placeholder="请输入用户名" required autocomplete="username">
+        </div>
+        <div class="form-group">
+            <label for="password">密码</label>
+            <input type="password" id="password" placeholder="请输入密码" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" id="loginBtn">登 录</button>
+        <div class="login-error" id="loginError"></div>
+    </form>
+</div>
+
+<script src="js/common.js"></script>
+<script src="js/api.js"></script>
+<script>
+(function () {
+    // 已登录直接跳转
+    if (isLoggedIn()) {
+        window.location.href = '/index.html';
+        return;
+    }
+
+    var form = document.getElementById('loginForm');
+    var errorEl = document.getElementById('loginError');
+    var btn = document.getElementById('loginBtn');
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var username = document.getElementById('username').value.trim();
+        var password = document.getElementById('password').value;
+
+        if (!username || !password) {
+            errorEl.textContent = '请输入用户名和密码';
+            errorEl.style.display = 'block';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = '登录中...';
+        errorEl.style.display = 'none';
+
+        API.login(username, password).then(function (resp) {
+            btn.disabled = false;
+            btn.textContent = '登 录';
+            if (resp.code === 200) {
+                setCurrentUser(resp.user);
+                showToast('登录成功', 'success');
+                setTimeout(function () {
+                    // 登录后跳回之前的页面，或默认到 fjsoil.html
+                    var redirect = sessionStorage.getItem('redirectAfterLogin') || '/fjsoil.html';
+                    sessionStorage.removeItem('redirectAfterLogin');
+                    window.location.href = redirect;
+                }, 300);
+            } else {
+                errorEl.textContent = resp.msg || '登录失败';
+                errorEl.style.display = 'block';
+            }
+        }).catch(function (err) {
+            btn.disabled = false;
+            btn.textContent = '登 录';
+            errorEl.textContent = '网络异常，请重试';
+            errorEl.style.display = 'block';
+        });
+    });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,3049 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>福建土壤专题信息系统</title>
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Turf.js -->
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        :root {
+            --primary: #e67e22;
+            --primary-light: #ffb347;
+            --bg-dark: rgba(25, 25, 35, 0.9);
+            --bg-panel: rgba(0, 0, 0, 0.7);
+            --radius: 20px;
+            --transition: 0.25s ease;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', Roboto, 'Helvetica Neue', sans-serif;
+            overflow: hidden;
+            background: #1a1a2e;
+        }
+
+        /* ── Map ── */
+        #map {
+            width: 100vw; height: 100vh;
+            z-index: 1;
+        }
+        .map-crosshair { cursor: crosshair !important; }
+
+        /* ── Header ── */
+        .theme-header {
+            position: absolute; top: 16px; left: 0; right: 0;
+            z-index: 1000; text-align: center; pointer-events: none;
+        }
+        .theme-header h1 {
+            display: inline-block;
+            background: linear-gradient(135deg, rgba(15,15,30,0.93), rgba(35,25,45,0.93));
+            backdrop-filter: blur(16px);
+            padding: 14px 42px; border-radius: 50px;
+            font-size: 1.6rem; font-weight: 800;
+            letter-spacing: 4px;
+            color: transparent;
+            background-image: linear-gradient(135deg, rgba(15,15,30,0.93), rgba(35,25,45,0.93));
+            -webkit-text-fill-color: #fff;
+            text-shadow: 0 0 30px rgba(255,170,50,0.7), 0 0 60px rgba(230,126,34,0.3), 0 3px 6px rgba(0,0,0,0.6);
+            box-shadow: 0 4px 30px rgba(0,0,0,0.4), 0 0 50px rgba(230,126,34,0.2), inset 0 1px 0 rgba(255,255,255,0.05);
+            border: 2px solid rgba(255,180,70,0.35);
+            pointer-events: auto;
+            position: relative;
+        }
+        .theme-header h1 i {
+            margin-right: 10px;
+            color: var(--primary-light);
+            font-size: 1.3em;
+            filter: drop-shadow(0 0 8px rgba(255,180,70,0.8));
+            animation: iconPulse 2s ease-in-out infinite;
+        }
+        @keyframes iconPulse {
+            0%, 100% { filter: drop-shadow(0 0 8px rgba(255,180,70,0.8)); }
+            50% { filter: drop-shadow(0 0 16px rgba(255,180,70,1)); }
+        }
+
+        /* ── Right Controls ── */
+        .right-controls {
+            position: absolute; top: 100px; right: 20px;
+            z-index: 1000; width: 260px; display: flex;
+            flex-direction: column; gap: 14px;
+        }
+        .control-card {
+            background: var(--bg-dark);
+            backdrop-filter: blur(16px);
+            border-radius: var(--radius); padding: 16px 18px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+        .card-title {
+            font-size: 13px; font-weight: 600; color: #ddd;
+            margin-bottom: 12px; padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .card-title i { color: var(--primary-light); font-size: 14px; }
+        .theme-group { display: flex; flex-direction: column; gap: 9px; }
+        .theme-btn, .basemap-btn {
+            background: rgba(0,0,0,0.45); border: none;
+            color: #e0e0e0; font-size: 13px; font-weight: 500;
+            padding: 10px 14px; border-radius: 36px; cursor: pointer;
+            display: flex; align-items: center; gap: 10px;
+            width: 100%; border: 1px solid rgba(255,255,255,0.08);
+            transition: all var(--transition);
+        }
+        .theme-btn i, .basemap-btn i { width: 22px; font-size: 15px; text-align: center; }
+        .theme-btn:hover, .basemap-btn:hover {
+            background: #3a4a5f; transform: translateX(3px);
+            border-color: rgba(255,180,70,0.45);
+        }
+        .theme-btn.active {
+            background: var(--primary); color: #fff;
+            box-shadow: 0 4px 14px rgba(230,126,34,0.35);
+            border-color: #f39c12;
+        }
+        .basemap-btn.active {
+            background: var(--accent); color: #fff;
+            box-shadow: 0 4px 14px rgba(41,121,255,0.35);
+            border-color: var(--accent-light);
+        }
+        .basemap-group { display: flex; flex-direction: column; gap: 9px; }
+
+        /* ── Bottom-Left Panels ── */
+        .bottom-left {
+            position: absolute; bottom: 36px; left: 20px;
+            z-index: 1000; max-width: 320px;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .legend-card {
+            background: var(--bg-panel);
+            backdrop-filter: blur(10px); border-radius: var(--radius);
+            padding: 14px 18px; color: #f0f0f0; font-size: 11px;
+            font-family: 'SF Mono','Consolas',monospace;
+            border-left: 3px solid var(--primary);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+            transition: all var(--transition); max-height: 380px;
+            overflow-y: auto;
+        }
+        .legend-card h4 {
+            margin-bottom: 8px; font-size: 13px; font-weight: 600;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+        .legend-color { width: 28px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+        .legend-label { font-size: 11px; line-height: 1.3; }
+        .info-card {
+            background: var(--bg-panel);
+            backdrop-filter: blur(10px); padding: 9px 16px;
+            border-radius: 28px; color: #f0f0f0; font-size: 12px;
+            font-family: 'SF Mono','Consolas',monospace;
+            border-left: 3px solid var(--primary);
+        }
+        .info-card span { color: #ffaa66; font-weight: bold; }
+
+        /* Quick Query Card */
+        .quick-query-card {
+            background: var(--bg-panel);
+            backdrop-filter: blur(10px); border-radius: var(--radius);
+            padding: 14px 18px; color: #f0f0f0;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+            border: 1px solid var(--border-medium);
+            font-size: 12px;
+        }
+        .qq-title {
+            font-size: 13px; font-weight: 600; margin-bottom: 10px;
+            display: flex; align-items: center; gap: 6px;
+            color: var(--primary-light);
+        }
+        .qq-slider-row {
+            display: flex; gap: 6px; align-items: center; margin: 6px 0;
+            background: rgba(255,255,255,0.04); padding: 8px 10px;
+            border-radius: 8px;
+        }
+        .qq-slider-row select {
+            background: rgba(255,255,255,0.08); border: 1px solid var(--border-subtle);
+            color: #fff; padding: 4px 8px; border-radius: 5px; font-size: 11px;
+        }
+        .qq-slider-row input[type="range"] { accent-color: var(--primary); }
+        .qq-val {
+            color: var(--primary-light); font-weight: 700; font-size: 14px;
+            min-width: 50px; text-align: center;
+        }
+        .qq-btns { display: flex; gap: 8px; margin-top: 8px; }
+        .qq-result {
+            margin-top: 8px; padding: 8px 12px; background: rgba(255,152,0,0.15);
+            border-radius: 8px; display: flex; align-items: center;
+            border: 1px solid rgba(255,152,0,0.3);
+        }
+        .qq-result-text { flex: 1; font-size: 12px; color: #ffab40; font-weight: 500; }
+
+        /* ── Attribute Panel (click-to-query results) ── */
+        .attr-panel {
+            background: var(--bg-panel);
+            backdrop-filter: blur(10px); border-radius: var(--radius);
+            padding: 14px 18px; color: #f0f0f0; font-size: 12px;
+            border-left: 3px solid #4fc3f7;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+            max-height: 280px; overflow-y: auto;
+            display: none; transition: all var(--transition);
+        }
+        .attr-panel.visible { display: block; animation: slideUp 0.25s ease; }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .attr-panel h4 {
+            margin-bottom: 8px; font-size: 12px; font-weight: 600;
+            display: flex; align-items: center; gap: 6px;
+            color: #4fc3f7;
+        }
+        .attr-panel .close-btn {
+            margin-left: auto; cursor: pointer; color: #aaa;
+            font-size: 14px; transition: color 0.2s;
+        }
+        .attr-panel .close-btn:hover { color: #fff; }
+        .attr-table { width: 100%; border-collapse: collapse; }
+        .attr-table td {
+            padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,0.08);
+            font-size: 12px;
+        }
+        .attr-table td:first-child {
+            color: #80cbc4; white-space: nowrap; font-weight: 500;
+            width: 40%;
+        }
+        .attr-table td:last-child { color: #eee; word-break: break-all; }
+        .no-feature-msg { color: #ff8a65; font-style: italic; text-align: center; padding: 8px; font-size: 12px; }
+
+        /* ── Toolbar ── */
+        .toolbar {
+            display: flex; gap: 8px; flex-wrap: wrap;
+        }
+        .tool-btn {
+            background: rgba(0,0,0,0.55); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.15); border-radius: 28px;
+            color: #ddd; font-size: 12px; padding: 8px 16px;
+            cursor: pointer; display: flex; align-items: center; gap: 7px;
+            transition: all var(--transition); font-family: inherit;
+            white-space: nowrap;
+        }
+        .tool-btn:hover { background: #3a4a5f; border-color: rgba(255,255,255,0.3); }
+        .tool-btn.active-tool {
+            background: #2979ff; color: #fff;
+            border-color: #448aff; box-shadow: 0 4px 12px rgba(41,121,255,0.35);
+        }
+        .tool-btn.danger:hover { background: #c62828; border-color: #e53935; }
+
+        /* ── Stats Panel (right side) ── */
+        .stats-panel {
+            background: var(--bg-dark);
+            backdrop-filter: blur(16px); border-radius: var(--radius);
+            padding: 14px 16px; color: #f0f0f0;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.12);
+            display: none; animation: fadeIn 0.3s ease;
+        }
+        .stats-panel.visible { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .stats-panel h4 {
+            margin-bottom: 10px; font-size: 13px; font-weight: 600;
+            display: flex; align-items: center; gap: 6px;
+            color: var(--primary-light);
+        }
+        .stat-row {
+            display: flex; justify-content: space-between;
+            padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 12px;
+        }
+        .stat-row .stat-val { color: #ffaa66; font-weight: 600; font-family: monospace; }
+        .filter-section { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); }
+        .filter-section label {
+            display: block; font-size: 10px; color: #aaa; margin-bottom: 4px;
+        }
+        .filter-row { display: flex; gap: 6px; align-items: center; }
+        .filter-row select, .filter-row input {
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+            color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px;
+            font-family: inherit;
+        }
+        .filter-row input[type="range"] { flex: 1; padding: 0; accent-color: var(--primary); }
+        .filter-row .filter-val { color: var(--primary-light); font-weight: 600; min-width: 50px; text-align: center; font-size: 12px; }
+        .stats-table-wrap { max-height: 180px; overflow-y: auto; margin-top: 8px; }
+        .stats-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        .stats-table th {
+            background: rgba(255,255,255,0.06); padding: 5px 6px;
+            text-align: left; position: sticky; top: 0; font-weight: 600;
+        }
+        .stats-table td { padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .stats-table tr:hover td { background: rgba(255,255,255,0.04); }
+        .stats-panel .close-btn-sm {
+            float: right; cursor: pointer; color: #aaa;
+            font-size: 14px; transition: color 0.2s; background: none; border: none;
+        }
+        .stats-panel .close-btn-sm:hover { color: #fff; }
+
+        /* ── Loading ── */
+        .loading-overlay {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%,-50%); z-index: 2000;
+            background: rgba(0,0,0,0.8); color: #fff;
+            padding: 10px 22px; border-radius: 50px;
+            font-size: 13px; display: none;
+            align-items: center; gap: 8px;
+        }
+        .loading-overlay.visible { display: flex; }
+        .spinner {
+            width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: var(--primary-light); border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Error Toast ── */
+        .error-toast {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%,-50%);
+            background: rgba(220,53,69,0.92); color: #fff;
+            padding: 12px 28px; border-radius: 50px;
+            z-index: 3000; font-size: 13px; text-align: center;
+            display: none; white-space: nowrap;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+            backdrop-filter: blur(10px); font-family: monospace;
+            max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
+        }
+        .error-toast.visible { display: block; animation: shakeIn 0.3s ease; }
+        @keyframes shakeIn {
+            0% { transform: translate(-50%,-50%) scale(0.9); opacity: 0; }
+            50% { transform: translate(-48%,-50%) scale(1.02); }
+            100% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+        }
+
+        /* ── Help Button & Modal ── */
+        .help-btn {
+            position: absolute; top: 20px; right: 20px; z-index: 2000;
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--bg-dark); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #ccc; font-size: 16px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        .help-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .help-overlay {
+            position: fixed; inset: 0; z-index: 5000;
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+            display: none; align-items: center; justify-content: center;
+        }
+        .help-overlay.visible { display: flex; }
+        .help-modal {
+            background: rgba(30,30,45,0.97); backdrop-filter: blur(20px);
+            border-radius: 16px; padding: 0; max-width: 500px; width: 90vw;
+            max-height: 80vh; overflow: hidden; display: flex; flex-direction: column;
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            animation: modalIn 0.2s ease;
+        }
+        @keyframes modalIn { from { opacity:0; transform:scale(0.95) translateY(-10px); } to { opacity:1; transform:scale(1) translateY(0); } }
+        .help-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .help-header h3 { color: #fff; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+        .help-header h3 i { color: var(--primary-light); }
+        .help-close {
+            background: none; border: none; color: #aaa; font-size: 22px;
+            cursor: pointer; transition: 0.2s;
+        }
+        .help-close:hover { color: #fff; }
+        .help-body { padding: 16px 20px; overflow-y: auto; flex: 1; color: #ccc; font-size: 12px; line-height: 1.7; }
+        .help-section { margin-bottom: 14px; }
+        .help-section h4 { color: var(--primary-light); font-size: 13px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+        .help-section h4 i { width: 16px; text-align: center; }
+        .help-section p { margin: 2px 0; padding-left: 22px; color: #bbb; }
+        .help-section b { color: #eee; }
+
+        /* ── Debug ── */
+        .debug-icon {
+            position: absolute; bottom: 36px; right: 8px; z-index: 1000;
+            background: rgba(0,0,0,0.45); backdrop-filter: blur(6px);
+            border-radius: 20px; padding: 4px 10px; font-size: 10px;
+            color: #777; cursor: pointer; font-family: monospace;
+            display: flex; align-items: center; gap: 5px; transition: 0.2s;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .debug-icon:hover { background: rgba(0,0,0,0.7); color: #ccc; }
+
+        /* ── Selection Highlight ── */
+        .highlight-layer { pointer-events: none; }
+
+        /* ── Click Marker ── */
+        .click-marker {
+            background: none; border: none;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+        }
+
+        /* ══════════════════════════════════════════════
+           MOBILE STYLES (≤768px)
+           ══════════════════════════════════════════════ */
+        @media (max-width: 768px) {
+            /* Hide desktop panels */
+            .right-controls, .bottom-left, .debug-icon {
+                display: none !important;
+            }
+
+            .theme-header h1 {
+                font-size: 1.1rem; padding: 10px 24px; letter-spacing: 2px;
+            }
+
+            /* FAB buttons */
+            .fab-container {
+                display: flex !important;
+                position: absolute; bottom: 80px; right: 14px;
+                z-index: 1600; flex-direction: column; gap: 10px;
+            }
+            .fab {
+                width: 48px; height: 48px; border-radius: 50%;
+                background: var(--bg-dark); backdrop-filter: blur(12px);
+                border: 1px solid rgba(255,255,255,0.18);
+                color: #eee; font-size: 18px; cursor: pointer;
+                display: flex; align-items: center; justify-content: center;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+                transition: all var(--transition);
+                -webkit-tap-highlight-color: transparent;
+            }
+            .fab:active { transform: scale(0.92); }
+            .fab.active-fab {
+                background: #2979ff; border-color: #448aff;
+                color: #fff;
+            }
+
+            /* Bottom Sheet */
+            .bottom-sheet {
+                position: fixed; bottom: 0; left: 0; right: 0;
+                z-index: 1500;
+                background: rgba(22,22,32,0.97);
+                backdrop-filter: blur(20px);
+                border-radius: 20px 20px 0 0;
+                box-shadow: 0 -6px 24px rgba(0,0,0,0.4);
+                border-top: 1px solid rgba(255,255,255,0.1);
+                height: 68vh;
+                transform: translateY(calc(100% - 48px));
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                display: flex; flex-direction: column;
+                touch-action: none;
+            }
+            .bottom-sheet.expanded {
+                transform: translateY(0);
+            }
+            .sheet-handle {
+                min-height: 48px; display: flex; align-items: center;
+                justify-content: center; cursor: pointer;
+                flex-shrink: 0;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .sheet-handle-bar {
+                width: 40px; height: 4px; background: rgba(255,255,255,0.35);
+                border-radius: 2px;
+            }
+            .sheet-tabs {
+                display: flex; border-bottom: 1px solid rgba(255,255,255,0.08);
+                flex-shrink: 0; padding: 0 8px;
+            }
+            .sheet-tab {
+                flex: 1; text-align: center; padding: 10px 4px;
+                font-size: 12px; font-weight: 500; color: #999;
+                cursor: pointer; border-bottom: 2px solid transparent;
+                transition: all var(--transition);
+                -webkit-tap-highlight-color: transparent;
+            }
+            .sheet-tab.active-tab {
+                color: var(--primary-light); border-bottom-color: var(--primary);
+            }
+            .sheet-tab i { margin-right: 4px; font-size: 11px; }
+            .sheet-content {
+                flex: 1; overflow-y: auto; padding: 12px 14px;
+                -webkit-overflow-scrolling: touch;
+            }
+            .sheet-section { display: none; }
+            .sheet-section.active-section { display: block; }
+
+            /* Theme buttons in sheet */
+            .sheet-theme-btn {
+                display: block; width: 100%; text-align: left;
+                background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+                color: #ddd; font-size: 13px; padding: 10px 14px; border-radius: 14px;
+                cursor: pointer; margin-bottom: 8px; font-family: inherit;
+                transition: all var(--transition);
+            }
+            .sheet-theme-btn.active {
+                background: var(--primary); color: #fff;
+                border-color: #f39c12;
+            }
+            .sheet-theme-btn i { margin-right: 8px; width: 18px; }
+
+            /* Legend in sheet */
+            .sheet-legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+            .sheet-legend-color { width: 28px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+            .sheet-legend-label { font-size: 11px; color: #ddd; }
+
+            /* Attribute table in sheet */
+            .sheet-attr-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            .sheet-attr-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+            .sheet-attr-table td:first-child { color: #80cbc4; font-weight: 500; width: 45%; }
+
+            /* Stats in sheet */
+            .sheet-stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 12px; }
+            .sheet-stat-val { color: #ffaa66; font-weight: 600; }
+            .sheet-filter-row { display: flex; gap: 8px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+            .sheet-filter-row select, .sheet-filter-row input[type="number"] {
+                background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+                color: #fff; padding: 6px 10px; border-radius: 8px; font-size: 12px;
+            }
+            .sheet-filter-row input[type="range"] { flex: 1; min-width: 100px; accent-color: var(--primary); }
+            .sheet-filter-val { color: var(--primary-light); font-weight: 600; font-size: 13px; }
+
+            .sheet-action-btn {
+                display: block; width: 100%; padding: 10px;
+                background: var(--primary); color: #fff; border: none;
+                border-radius: 14px; font-size: 13px; font-weight: 600;
+                cursor: pointer; margin-top: 10px; font-family: inherit;
+                transition: all var(--transition);
+            }
+            .sheet-action-btn:active { transform: scale(0.96); }
+            .sheet-action-btn.secondary {
+                background: rgba(255,255,255,0.1); color: #ddd;
+            }
+        }
+
+        /* Small phone */
+        @media (max-width: 400px) {
+            .theme-header h1 { font-size: 0.95rem; padding: 8px 20px; letter-spacing: 1px; }
+            .fab { width: 42px; height: 42px; font-size: 16px; }
+            .fab-container { bottom: 70px; right: 10px; gap: 8px; }
+            .bottom-sheet { height: 72vh; }
+            .sheet-tab { font-size: 10px; padding: 8px 2px; }
+        }
+
+        /* ══════════════════════════════════════════════
+           NEW ENHANCED STYLES
+           ══════════════════════════════════════════════ */
+
+        /* GeoServer Banner */
+        .gs-banner {
+            position: absolute; top: 0; left: 0; right: 0; z-index: 5000;
+            background: rgba(220,53,69,0.92); color: #fff; text-align: center;
+            padding: 6px 16px; font-size: 12px; backdrop-filter: blur(8px);
+            display: none; align-items: center; justify-content: center;
+            flex-wrap: wrap;
+        }
+        .gs-banner.visible { display: flex; }
+
+        /* County Selector */
+        .county-select-row { margin-bottom: 8px; }
+        .county-select {
+            width: 100%; background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15); color: #fff;
+            padding: 7px 12px; border-radius: 8px; font-size: 12px;
+            font-family: inherit; margin-bottom: 4px;
+        }
+        .county-select option { background: #1a1a2e; color: #fff; }
+        .county-select option:disabled { color: #888; }
+
+        /* Advanced Stats */
+        .advanced-stats-content { margin-top: 8px; }
+        .percentile-row {
+            display: flex; justify-content: space-between; padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 11px;
+        }
+        .percentile-row .pct-val { color: #80cbc4; font-weight: 600; font-family: monospace; }
+
+        /* Histogram */
+        .histogram-container { margin: 10px 0; padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.08); }
+        .histogram-container h5 {
+            font-size: 11px; color: #aaa; margin-bottom: 6px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .histogram-bars {
+            display: flex; align-items: flex-end; gap: 2px;
+            height: 60px; padding: 0 2px;
+            border-bottom: 1px solid rgba(255,255,255,0.12);
+        }
+        .histo-bar {
+            flex: 1; background: linear-gradient(to top, var(--primary), var(--primary-light));
+            border-radius: 2px 2px 0 0; min-height: 2px;
+            transition: height 0.3s ease; cursor: pointer; opacity: 0.8;
+        }
+        .histo-bar:hover { opacity: 1; filter: brightness(1.3); }
+        .histogram-labels {
+            display: flex; gap: 2px; font-size: 8px; color: #777;
+            margin-top: 3px; overflow: hidden;
+        }
+        .histogram-labels span {
+            flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; min-width: 0;
+        }
+
+        /* Sortable Table */
+        .stats-table th {
+            cursor: pointer; user-select: none; white-space: nowrap;
+            transition: background 0.15s;
+        }
+        .stats-table th:hover { background: rgba(255,255,255,0.1); }
+        .stats-table th .sort-icon { margin-left: 3px; font-size: 9px; opacity: 0.3; }
+        .stats-table th.sorted-asc .sort-icon,
+        .stats-table th.sorted-desc .sort-icon { opacity: 1; color: var(--primary-light); }
+
+        /* Multi-Filter */
+        .multi-filter-section {
+            padding: 6px 0; margin-bottom: 4px;
+            border-bottom: 1px dashed rgba(255,255,255,0.08);
+        }
+        .filter-logic-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+        .filter-logic-toggle {
+            background: rgba(41,121,255,0.3); border: 1px solid rgba(41,121,255,0.5);
+            color: #fff; padding: 2px 10px; border-radius: 10px;
+            font-size: 11px; cursor: pointer; font-weight: 700;
+            transition: all 0.2s;
+        }
+        .filter-logic-toggle:hover { background: rgba(41,121,255,0.5); }
+        .filter-logic-toggle.logic-or { background: rgba(230,126,34,0.3); border-color: rgba(230,126,34,0.5); }
+        .add-filter-btn {
+            background: none; border: 1px dashed rgba(255,255,255,0.2);
+            color: #888; padding: 3px 10px; border-radius: 12px;
+            font-size: 10px; cursor: pointer; font-family: inherit;
+            transition: all 0.2s;
+        }
+        .add-filter-btn:hover { border-color: rgba(255,255,255,0.4); color: #ccc; }
+
+        /* Measurement Tooltip */
+        .measure-tooltip {
+            background: rgba(0,0,0,0.85); color: #fff;
+            padding: 5px 12px; border-radius: 14px; font-size: 12px;
+            font-family: 'SF Mono','Consolas',monospace; white-space: nowrap;
+            border: 1px solid var(--primary-light);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+        }
+
+        /* Skeleton Loading */
+        .skeleton {
+            background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.04) 75%);
+            background-size: 200% 100%; animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+        }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .skeleton-row { height: 13px; margin: 6px 0; }
+        .skeleton-row.short { width: 60%; }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center; padding: 20px 16px; color: #888;
+        }
+        .empty-state i { font-size: 32px; display: block; margin-bottom: 8px; opacity: 0.5; }
+        .empty-state p { font-size: 12px; line-height: 1.5; }
+
+        /* Gradient Legend */
+        .legend-gradient {
+            width: 100%; height: 12px; border-radius: 4px; margin-bottom: 8px;
+            position: relative;
+        }
+        .legend-gradient-labels {
+            display: flex; justify-content: space-between; font-size: 9px; color: #aaa;
+            margin-bottom: 10px;
+        }
+        .legend-toggle-btn {
+            float: right; background: none; border: none; color: #aaa;
+            cursor: pointer; font-size: 13px; transition: color 0.2s;
+        }
+        .legend-toggle-btn:hover { color: #fff; }
+
+        /* County Search Row */
+        .attr-search-row {
+            display: flex; gap: 8px; margin-bottom: 8px;
+        }
+        .attr-search-row input {
+            flex: 1; background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15); color: #fff;
+            padding: 7px 12px; border-radius: 20px; font-size: 12px;
+            font-family: inherit; min-width: 0;
+        }
+        .attr-search-row input::placeholder { color: #888; }
+        .attr-search-row button {
+            background: var(--primary); border: none; color: #fff;
+            border-radius: 50%; width: 32px; height: 32px; cursor: pointer;
+            font-size: 13px; flex-shrink: 0; transition: all 0.2s;
+        }
+        .attr-search-row button:hover { background: var(--primary-dark); }
+        .result-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 11px; font-weight: 600; margin-bottom: 6px;
+        }
+        .result-badge.found { background: rgba(46,204,113,0.2); color: #2ecc71; }
+        .result-badge.empty { background: rgba(255,138,101,0.2); color: #ff8a65; }
+
+        /* Enhanced Panel Animation */
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-in-right { animation: slideInRight 0.3s ease; }
+        .animate-in-up { animation: slideInUp 0.25s ease; }
+
+        /* Highlight on click */
+        .click-highlight { pointer-events: none; }
+
+        /* Mobile Enhancements */
+        @media (max-width: 768px) {
+            .county-select { font-size: 13px; padding: 8px 12px; }
+            .histogram-bars { height: 50px; }
+            .multi-filter-section .filter-row { flex-wrap: wrap; }
+            .multi-filter-section select,
+            .multi-filter-section input {
+                font-size: 11px; padding: 5px 8px;
+            }
+            .gs-banner { font-size: 11px; padding: 5px 10px; }
+            .attr-search-row input { font-size: 13px; padding: 7px 12px; }
+            .attr-search-row button { width: 32px; height: 32px; }
+            .stats-table { font-size: 11px; }
+            .stats-table th, .stats-table td { padding: 6px 8px; }
+        }
+
+        @media (max-width: 400px) {
+            .histogram-bars { height: 40px; }
+            .histogram-labels span { font-size: 7px; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Map -->
+    <div id="map"></div>
+    <!-- GeoServer Status Banner -->
+    <div class="gs-banner" id="gsBanner">
+        <i class="fas fa-exclamation-triangle" style="margin-right:8px;"></i>
+        <span>GeoServer 服务未响应 — 底图仍可浏览，专题数据和查询功能暂时不可用</span>
+        <button onclick="this.parentElement.style.display='none'" style="margin-left:12px;background:none;border:none;color:#fff;cursor:pointer;font-size:16px;">&times;</button>
+    </div>
+
+    <!-- Header -->
+    <div class="theme-header">
+        <h1><i class="fas fa-map-marked-alt"></i> 福建省土壤专题信息系统</h1>
+    </div>
+
+    <!-- Admin Button -->
+    <a href="/admin.html" style="position:absolute;top:20px;right:60px;z-index:2000;width:32px;height:32px;border-radius:50%;background:var(--bg-dark);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.2);color:#ccc;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;box-shadow:0 2px 10px rgba(0,0,0,0.3);text-decoration:none;" title="用户管理">
+        <i class="fas fa-users-cog"></i>
+    </a>
+    <!-- Help Button -->
+    <div class="help-btn" id="helpBtn" onclick="toggleHelp()" title="操作说明">
+        <i class="fas fa-question"></i>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="help-overlay" id="helpOverlay" onclick="toggleHelp()">
+        <div class="help-modal" onclick="event.stopPropagation()">
+            <div class="help-header">
+                <h3><i class="fas fa-book"></i> 操作说明</h3>
+                <button class="help-close" onclick="toggleHelp()">&times;</button>
+            </div>
+            <div class="help-body">
+                <div class="help-section">
+                    <h4><i class="fas fa-mouse-pointer"></i> 属性查询</h4>
+                    <p>点击地图任意位置，查询该点土壤属性信息（WMS GetFeatureInfo）。</p>
+                    <p>在左下角搜索框输入县区名称，可搜索全县地块。</p>
+                </div>
+                <div class="help-section">
+                    <h4><i class="fas fa-layer-group"></i> 专题图切换</h4>
+                    <p>右侧面板切换三种专题图：县区标签、有机质、土壤密度。</p>
+                    <p>切换专题时会平滑缩放到对应数据区域。</p>
+                </div>
+                <div class="help-section">
+                    <h4><i class="fas fa-filter"></i> 快捷筛选查询</h4>
+                    <p><b>县域选择：</b>下拉选择县域，自动查询该县全部地块并缩放到县范围。</p>
+                    <p><b>阈值滑块：</b>设置有机质/密度筛选条件，如"有机质 &lt; 30.5"。</p>
+                    <p><b>框选查询：</b>点击"框选查询"后在地图上拖拽矩形范围。</p>
+                    <p><b>视图查询：</b>一键统计当前屏幕范围内的所有地块。</p>
+                </div>
+                <div class="help-section">
+                    <h4><i class="fas fa-chart-bar"></i> 统计结果</h4>
+                    <p>框选或县域查询后，右侧面板显示详细统计：地块数、总面积（亩）、平均值、最小/最大值、标准差。</p>
+                    <p>点击"展开高级统计"可查看四分位数、直方图和变异系数。</p>
+                    <p>点击统计表表头可按列排序。</p>
+                </div>
+                <div class="help-section">
+                    <h4><i class="fas fa-ruler"></i> 测量工具</h4>
+                    <p><b>测距：</b>点击地图添加路径点，双击完成测量。</p>
+                    <p><b>测面积：</b>点击地图绘制多边形，双击闭合计算面积。</p>
+                </div>
+                <div class="help-section">
+                    <h4><i class="fas fa-download"></i> 数据导出</h4>
+                    <p>查询结果可导出为 CSV（Excel 兼容）或 GeoJSON 格式。</p>
+                </div>
+                <div class="help-section">
+                    <h4><i class="fas fa-mobile-alt"></i> 移动端</h4>
+                    <p>屏幕宽度 ≤768px 时自动切换移动端布局，底部面板支持拖拽、点击标签切换。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Desktop: Right panels -->
+    <div class="right-controls" id="rightControls">
+        <!-- Theme card -->
+        <div class="control-card" id="themeCard">
+            <div class="card-title"><i class="fas fa-layer-group"></i> 专题图层</div>
+            <div class="theme-group" id="themeGroupDesktop"></div>
+        </div>
+        <!-- Basemap card -->
+        <div class="control-card" id="basemapCard">
+            <div class="card-title"><i class="fas fa-map"></i> 底图切换</div>
+            <div class="basemap-group" id="basemapGroupDesktop"></div>
+        </div>
+        <!-- Stats panel -->
+        <div class="stats-panel" id="statsPanel">
+            <button class="close-btn-sm" title="关闭" onclick="closeStatsPanel()">&times;</button>
+            <h4><i class="fas fa-chart-pie"></i> 框选统计结果</h4>
+            <div id="statsContent"></div>
+            <div class="county-select-row" id="countySelectRow" style="display:none;">
+                <select class="county-select" id="countySelect" onchange="onCountySelect(this.value)">
+                    <option value="">-- 选择县域快速查询 --</option>
+                </select>
+                <button class="tool-btn" onclick="clearCountySelect()" style="font-size:10px;padding:4px 10px;margin-top:4px;">
+                    <i class="fas fa-times"></i> 清除县域
+                </button>
+            </div>
+            <div class="filter-section" id="filterSection" style="display:none;">
+                <label id="filterLabel">筛选阈值</label>
+                <div class="multi-filter-section" id="multiFilterSection" style="display:none;">
+                    <div class="filter-logic-row">
+                        <button class="filter-logic-toggle" id="filterLogicBtn" onclick="toggleFilterLogic()">AND</button>
+                        <span style="font-size:10px;color:#888;">逻辑关系</span>
+                        <button class="tool-btn" onclick="removeSecondFilter()" style="font-size:10px;padding:2px 8px;margin-left:auto;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="filter-row" style="margin-top:4px;">
+                        <select id="filterField2">
+                            <option value="">选择字段</option>
+                        </select>
+                        <select id="filterOp2">
+                            <option value="<">&lt;</option>
+                            <option value=">">&gt;</option>
+                            <option value="<=">&le;</option>
+                            <option value=">=">&ge;</option>
+                            <option value="=">=</option>
+                        </select>
+                        <input type="number" id="filterVal2" step="any" onchange="applyFilter()" style="width:70px;" placeholder="值" />
+                    </div>
+                </div>
+                <div class="filter-row">
+                    <select id="filterOp" onchange="applyFilter()">
+                        <option value="<">&lt;</option>
+                        <option value=">">&gt;</option>
+                        <option value="<=">&le;</option>
+                        <option value=">=">&ge;</option>
+                    </select>
+                    <input type="range" id="filterSlider" oninput="onFilterSlider(this.value)" />
+                    <span class="filter-val" id="filterVal"></span>
+                <button class="add-filter-btn" id="addFilterBtn" onclick="addSecondFilter()" style="margin-top:6px;display:none;">
+                    <i class="fas fa-plus"></i> 添加筛选条件
+                </button>
+                </div>
+            </div>
+            <div class="advanced-stats-toggle" id="advStatsToggle" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.1);">
+                <button class="tool-btn" onclick="toggleAdvancedStats()" style="width:100%;justify-content:center;font-size:11px;">
+                    <i class="fas fa-chart-bar"></i> <span id="advStatsToggleText">展开高级统计</span>
+                </button>
+                <div class="advanced-stats-content" id="advStatsContent" style="display:none;">
+                    <div id="percentileStats"></div>
+                    <div id="histogramContainer"></div>
+                </div>
+            </div>
+            <div class="stats-table-wrap" id="statsTableWrap"></div>
+            <div style="display:flex;gap:6px;margin-top:8px;">
+                <button class="tool-btn" onclick="exportCSV()" style="flex:1;justify-content:center;"><i class="fas fa-download"></i> CSV</button>
+                <button class="tool-btn" onclick="exportGeoJSON()" style="flex:1;justify-content:center;"><i class="fas fa-file-code"></i> GeoJSON</button>
+            </div>
+            <button class="tool-btn danger" onclick="clearSelection()" style="width:100%;justify-content:center;margin-top:6px;">
+                <i class="fas fa-trash"></i> 清除选择
+            </button>
+        </div>
+    </div>
+
+    <!-- Desktop: Bottom-left panels -->
+    <div class="bottom-left" id="bottomLeft">
+        <div class="legend-card" id="legendPanel">
+            <h4><i class="fas fa-palette"></i> 图例说明</h4>
+            <div id="legendContent">加载中...</div>
+        </div>
+        <div class="attr-panel" id="attrPanel">
+            <h4>
+                <i class="fas fa-info-circle"></i> 要素属性查询
+                <span class="close-btn" onclick="closeAttrPanel()">&times;</span>
+            </h4>
+            <div class="attr-search-row">
+                <input type="text" id="countySearchInput" placeholder="输入县区名称搜索..."
+                       onkeydown="if(event.key==='Enter')searchByCounty()" />
+                <button onclick="searchByCounty()" title="搜索"><i class="fas fa-search"></i></button>
+            </div>
+            <div id="attrContent"><span class="no-feature-msg">点击地图查询该位置土壤属性</span></div>
+        </div>
+        <!-- 快捷查询面板 -->
+        <div class="quick-query-card" id="quickQueryCard">
+            <div class="qq-title"><i class="fas fa-filter"></i> 快捷筛选查询</div>
+            <select class="county-select" id="countySelect2" onchange="onCountySelect(this.value)" style="margin-bottom:6px;">
+                <option value="">-- 选择县域（可选）--</option>
+            </select>
+            <div class="qq-slider-row" id="qqSliderRow" style="display:none;">
+                <select id="quickFilterOp" onchange="applyQuickFilter()" style="flex-shrink:0;">
+                    <option value="<">&lt;</option>
+                    <option value=">">&gt;</option>
+                    <option value="<=">&le;</option>
+                    <option value=">=">&ge;</option>
+                </select>
+                <input type="range" id="quickFilterSlider" oninput="onQuickSlider(this.value)" style="flex:1;min-width:60px;" />
+                <span class="qq-val" id="quickFilterVal">30.5</span>
+            </div>
+            <div class="qq-btns">
+                <button class="tool-btn" id="btnBoxSelect" onclick="toggleDrawMode()" style="flex:1;justify-content:center;">
+                    <i class="fas fa-vector-square"></i> 框选查询
+                </button>
+                <button class="tool-btn" onclick="queryCurrentMapBounds()" style="flex:1;justify-content:center;">
+                    <i class="fas fa-expand"></i> 视图查询
+                </button>
+            </div>
+            <div class="qq-result" id="quickResult" style="display:none;">
+                <span class="qq-result-text" id="quickResultText"></span>
+                <button class="tool-btn" onclick="clearSelection()" style="font-size:10px;padding:2px 8px;margin-left:6px;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+        <!-- 工具按钮 -->
+        <div class="toolbar" id="toolbarDesktop">
+            <button class="tool-btn" id="btnMeasureDist" onclick="toggleMeasureMode('distance')">
+                <i class="fas fa-ruler"></i> 测距
+            </button>
+            <button class="tool-btn" id="btnMeasureArea" onclick="toggleMeasureMode('area')">
+                <i class="fas fa-draw-polygon"></i> 测面积
+            </button>
+            <button class="tool-btn danger" onclick="clearSelection()">
+                <i class="fas fa-trash"></i> 清除
+            </button>
+        </div>
+        <div class="info-card">
+            <i class="fas fa-info-circle"></i> <span id="themeName">县区标签专题图</span>
+            &nbsp;|&nbsp; WGS84
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div> 查询中...
+    </div>
+
+    <!-- Error toast -->
+    <div id="errorToast" class="error-toast">⚠️ 地图加载失败，查看控制台</div>
+
+    <!-- Debug -->
+    <div class="debug-icon" id="debugBtn" onclick="debugDump()">
+        <i class="fas fa-bug"></i> 调试
+    </div>
+
+    <!-- ──────── Mobile ──────── -->
+    <div class="fab-container" id="fabContainer" style="display:none;">
+        <button class="fab" id="fabDraw" title="框选统计" onclick="toggleDrawMode()">
+            <i class="fas fa-vector-square"></i>
+        </button>
+        <button class="fab" id="fabMeasureDist" title="测距" onclick="toggleMeasureMode('distance')">
+            <i class="fas fa-ruler"></i>
+        </button>
+        <button class="fab" id="fabMeasureArea" title="测面积" onclick="toggleMeasureMode('area')">
+            <i class="fas fa-draw-polygon"></i>
+        </button>
+        <button class="fab" id="fabClear" title="清除选择" onclick="clearSelection()">
+            <i class="fas fa-trash"></i>
+        </button>
+    </div>
+
+    <div class="bottom-sheet" id="bottomSheet">
+        <div class="sheet-handle" id="sheetHandle">
+            <div class="sheet-handle-bar"></div>
+        </div>
+        <div class="sheet-tabs">
+            <div class="sheet-tab active-tab" data-tab="info"><i class="fas fa-map"></i> 专题</div>
+            <div class="sheet-tab" data-tab="attr"><i class="fas fa-search"></i> 属性</div>
+            <div class="sheet-tab" data-tab="stats"><i class="fas fa-chart-bar"></i> 统计</div>
+            <div class="sheet-tab" data-tab="export"><i class="fas fa-download"></i> 导出</div>
+        </div>
+        <div class="sheet-content">
+            <div class="sheet-section active-section" id="sheetInfo">
+                <div id="sheetThemeBtns"></div>
+                <div id="sheetLegend"></div>
+                <div id="sheetInfoMeta"></div>
+            </div>
+            <div class="sheet-section" id="sheetAttr">
+                <div id="sheetAttrContent"><span style="color:#ff8a65;">点击地图查询该位置土壤属性</span></div>
+            </div>
+            <div class="sheet-section" id="sheetStats">
+                <div id="sheetStatsContent"><span style="color:#888;">请先使用框选工具在地图上选择范围，或使用当前视图统计。</span></div>
+                <div class="sheet-filter-row" id="sheetFilterRow" style="display:none;">
+                    <select id="sheetFilterOp" onchange="applyFilter()" style="flex-shrink:0;">
+                        <option value="<">&lt;</option>
+                        <option value=">">&gt;</option>
+                        <option value="<=">&le;</option>
+                        <option value=">=">&ge;</option>
+                    </select>
+                    <input type="range" id="sheetFilterSlider" oninput="onSheetFilterSlider(this.value)" style="flex:1;min-width:80px;" />
+                    <span class="sheet-filter-val" id="sheetFilterVal"></span>
+                </div>
+                <button class="sheet-action-btn secondary" onclick="queryCurrentMapBounds()" style="margin-top:10px;">查询当前视图范围</button>
+                <div id="sheetStatsTableWrap" style="max-height:180px;overflow-y:auto;margin-top:6px;"></div>
+            </div>
+            <div class="sheet-section" id="sheetExport">
+                <button class="sheet-action-btn" onclick="exportCSV()"><i class="fas fa-file-csv"></i> 导出统计结果 (CSV)</button>
+                <button class="sheet-action-btn" onclick="exportGeoJSON()" style="margin-top:8px;"><i class="fas fa-file-code"></i> 导出统计结果 (GeoJSON)</button>
+                <button class="sheet-action-btn secondary" onclick="clearSelection()" style="margin-top:8px;"><i class="fas fa-trash"></i> 清除选择</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ╔══════════════════════════════════════════════════════╗
+    // ║  福建土壤专题信息系统 — Enhanced WebGIS Application ║
+    // ╚══════════════════════════════════════════════════════╝
+
+    // ──────────────────────────────────────────────────
+    //  登录检查（后端 Shiro 认证）
+    // ──────────────────────────────────────────────────
+    (function checkAuth() {
+        fetch('/api/soil/stat/total', { method: 'GET', credentials: 'same-origin' })
+            .then(function(r) {
+                console.log('[登录检查] HTTP状态码:', r.status);
+                if (r.status === 401) {
+                    console.log('[登录检查] 未登录，跳转到登录页');
+                    sessionStorage.setItem('redirectAfterLogin', location.href);
+                    location.href = '/login.html';
+                } else {
+                    console.log('[登录检查] 已登录，正常访问');
+                }
+            })
+            .catch(function(err) {
+                console.log('[登录检查] 请求失败:', err.message);
+            });
+    })();
+
+    // ──────────────────────────────────────────────────
+    //  Section 0: CONFIGURATION
+    // ──────────────────────────────────────────────────
+    const CONFIG = {
+        geoServer: {
+            // 使用本地CORS代理 (server.py)，避免跨域问题
+            // 如果不使用代理，改为: baseUrl: 'http://localhost:8080/geoserver'
+            baseUrl: '/geoserver',
+            workspace: 'fjsoil',
+            get wmsUrl() { return `${this.baseUrl}/${this.workspace}/wms`; },
+            get wfsUrl() { return `${this.baseUrl}/${this.workspace}/ows`; }
+        },
+        map: {
+            // 初始显示整个福建省
+            center: [25.9, 118.3],
+            zoom: 8,
+            minZoom: 3,
+            maxZoom: 19,
+            // 福建全省边界 [SW, NE]（放宽边距）
+            fujianBounds: [[23.30, 115.50], [28.60, 121.00]],
+            // 永定县土壤数据区域 [SW, NE]
+            yongdingBounds: [[24.65, 116.55], [24.82, 116.67]]
+        },
+        basemaps: {
+            current: 'amap',  // 当前底图
+            options: {
+                amap: {
+                    name: '高德标准',
+                    icon: 'fa-map',
+                    url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+                    subdomains: '1234',
+                    maxZoom: 18,
+                    attribution: '&copy; 高德地图'
+                },
+                satellite: {
+                    name: '卫星影像',
+                    icon: 'fa-satellite',
+                    url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+                    subdomains: '1234',
+                    maxZoom: 18,
+                    attribution: '&copy; 高德卫星图'
+                },
+                cartodb: {
+                    name: 'CartoDB',
+                    icon: 'fa-globe',
+                    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                    subdomains: 'abcd',
+                    maxZoom: 19,
+                    attribution: '&copy; OSM &copy; CartoDB'
+                }
+            }
+        },
+        wfs: {
+            maxFeatures: 1000,
+            outputFormat: 'application/json',
+            version: '2.0.0',
+            timeout: 15000
+        },
+        themes: {
+            soil_all_group: {
+                fullName: 'fjsoil:xianqu',
+                displayName: '县区标签专题图',
+                icon: 'fa-map-marker-alt',
+                legendType: 'county',
+                wfsLayer: 'fjsoil:xianqu',
+                geometryField: 'geom',
+                attributeFields: ['县名称', '市名称', '省名称'],
+                valueField: null,
+                filterThresholds: null
+            },
+            organic_group: {
+                fullName: 'fjsoil:organic',
+                displayName: '有机质专题图',
+                icon: 'fa-leaf',
+                legendType: 'organic',
+                wfsLayer: 'fjsoil:organic',
+                geometryField: 'geom',
+                attributeFields: ['县名称', '乡名称', '有机质', '密度', '容重'],
+                valueField: '有机质',
+                filterUnit: 'g/kg',
+                filterThresholds: {
+                    label: '有机质含量 (g/kg)',
+                    min: 28.89, max: 35.35, step: 0.01,
+                    defaultThreshold: 30.5,
+                    operator: '<'
+                }
+            },
+            acid_group: {
+                fullName: 'fjsoil:acid',
+                displayName: '土壤密度专题图',
+                icon: 'fa-chart-line',
+                legendType: 'density',
+                wfsLayer: 'fjsoil:acid',
+                geometryField: 'geom',
+                attributeFields: ['县名称', '乡名称', '有机质', '密度', '容重'],
+                valueField: '密度',
+                filterUnit: 'g/cm³',
+                filterThresholds: {
+                    label: '土壤密度 (g/cm³)',
+                    min: 0.346, max: 0.528, step: 0.001,
+                    defaultThreshold: 0.415,
+                    operator: '<'
+                }
+            }
+        },
+        legends: {
+            density: [
+                { range: '0.346 - 0.369', color: '#30123b', label: '极低密度' },
+                { range: '0.369 - 0.392', color: '#4662d8', label: '低密度' },
+                { range: '0.392 - 0.415', color: '#35abf8', label: '中低密度' },
+                { range: '0.415 - 0.437', color: '#1be5b5', label: '中等密度' },
+                { range: '0.437 - 0.460', color: '#74fe5d', label: '中高密度' },
+                { range: '0.460 - 0.483', color: '#c9ef34', label: '偏高密度' },
+                { range: '0.483 - 0.505', color: '#fbb938', label: '高密度' },
+                { range: '0.505 - 0.528', color: '#7a0403', label: '极高密度' }
+            ],
+            organic: [
+                { range: '28.89 - 29.70', color: '#30123b', label: '极低有机质' },
+                { range: '29.70 - 30.50', color: '#4777ef', label: '低有机质' },
+                { range: '30.50 - 31.31', color: '#1bd0d5', label: '中低有机质' },
+                { range: '31.31 - 32.12', color: '#64fd6a', label: '中等有机质' },
+                { range: '32.12 - 32.92', color: '#d3e835', label: '中高有机质' },
+                { range: '32.92 - 33.73', color: '#fe992c', label: '偏高有机质' },
+                { range: '33.73 - 34.54', color: '#f56918', label: '高有机质' },
+                { range: '34.54 - 35.35', color: '#7a0403', label: '极高有机质' }
+            ]
+        },
+        responsive: {
+            mobileMax: 768
+        },
+        counties: {
+            list: [
+                '福州市','厦门市','莆田市','三明市','泉州市',
+                '漳州市','南平市','龙岩市','宁德市',
+                '鼓楼区','台江区','仓山区','马尾区','晋安区','长乐区',
+                '思明区','海沧区','湖里区','集美区','同安区','翔安区',
+                '城厢区','涵江区','荔城区','秀屿区','仙游县',
+                '梅列区','三元区','永安市','明溪县','清流县','宁化县','大田县','尤溪县','沙县','将乐县','泰宁县','建宁县',
+                '鲤城区','丰泽区','洛江区','泉港区','石狮市','晋江市','南安市','惠安县','安溪县','永春县','德化县','金门县',
+                '芗城区','龙文区','龙海市','云霄县','漳浦县','诏安县','长泰县','东山县','南靖县','平和县','华安县',
+                '延平区','建阳区','邵武市','武夷山市','建瓯市','顺昌县','浦城县','光泽县','松溪县','政和县',
+                '新罗区','永定区','漳平市','长汀县','上杭县','武平县','连城县',
+                '蕉城区','福安市','福鼎市','霞浦县','古田县','屏南县','寿宁县','周宁县','柘荣县'
+            ],
+            // 不同图层的县名字段不同
+            fieldMap: {
+                'fjsoil:xianqu': 'xzqmc',
+                'fjsoil:organic': '县名称',
+                'fjsoil:acid': '县名称'
+            }
+        }
+    };
+
+    // ──────────────────────────────────────────────────
+    //  Section 1: APPLICATION STATE
+    // ──────────────────────────────────────────────────
+    let currentThemeKey = 'soil_all_group';
+    let wmsLayer = null;          // Current theme WMS layer
+    let xianquLayer = null;       // County boundary base layer (always visible)
+    let drawState = 'idle';        // 'idle' | 'drawing' | 'drawn'
+    let drawStartLatLng = null;
+    let drawRect = null;           // L.rectangle preview
+    let selectedBounds = null;     // L.latLngBounds finalized
+    let highlightLayer = null;     // L.geoJSON for selected features
+    let currentFeatures = [];      // GeoJSON features from last WFS query
+    let currentStats = null;       // Stats result object
+    let clickMarker = null;        // L.circleMarker for click location
+    let currentFilterValue = null; // Current threshold value
+    let isMobile = false;
+    let _loadingDepth = 0;       // Loading counter for nested async ops
+    let _getFeatureInfoController = null; // AbortController for click-to-query
+    let _lastDrawTime = 0;       // Timestamp of last box-select completion
+    let _errorQueue = [];        // Error toast queue
+    let _errorShowing = false;   // Whether an error is currently displayed
+    let _sortState = { column: null, direction: 'asc' }; // Table sort state
+    let _advancedStatsOpen = false; // Toggle for advanced stats section
+    let _secondFilterActive = false; // Multi-filter second condition
+    let _filterLogic = 'AND';    // AND/OR for multi-filter
+    let _selectedCounty = null;  // Currently selected county for quick-select
+    let _countyNames = new Set(); // Accumulated county names from queries
+    // Measurement state
+    let _measureMode = null;     // null | 'distance' | 'area'
+    let _measurePoints = [];
+    let _measureLayer = null;
+    let _measureMarkers = [];
+    let _measureTooltip = null;
+
+    // ──────────────────────────────────────────────────
+    //  Section 2: MAP & LAYERS
+    // ──────────────────────────────────────────────────
+    const map = L.map('map').setView(CONFIG.map.center, CONFIG.map.zoom);
+    // 启动时适配福建全省范围
+    // 以福建中心为视点，缩放至约 1:50km 比例尺
+    map.setView([25.9, 118.3], 8);
+    let basemapTileLayer = null;  // Current basemap tile layer
+
+    function switchBasemap(basemapKey) {
+        var opt = CONFIG.basemaps.options[basemapKey];
+        if (!opt || CONFIG.basemaps.current === basemapKey) return;
+        CONFIG.basemaps.current = basemapKey;
+        if (basemapTileLayer) map.removeLayer(basemapTileLayer);
+        basemapTileLayer = L.tileLayer(opt.url, {
+            attribution: opt.attribution + ' | 土壤数据 @ GeoServer',
+            subdomains: opt.subdomains,
+            maxZoom: opt.maxZoom || CONFIG.map.maxZoom,
+            minZoom: CONFIG.map.minZoom
+        }).addTo(map);
+        // 确保底图始终在 WMS 专题图层下方
+        basemapTileLayer.bringToBack();
+        // Update button states
+        document.querySelectorAll('.basemap-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-basemap') === basemapKey);
+        });
+        document.querySelectorAll('.sheet-basemap-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-basemap') === basemapKey);
+        });
+    }
+
+    // Init basemap
+    var initBm = CONFIG.basemaps.options[CONFIG.basemaps.current];
+    basemapTileLayer = L.tileLayer(initBm.url, {
+        attribution: initBm.attribution + ' | 土壤数据 @ GeoServer',
+        subdomains: initBm.subdomains,
+        maxZoom: initBm.maxZoom || CONFIG.map.maxZoom,
+        minZoom: CONFIG.map.minZoom
+    }).addTo(map);
+    L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
+
+    function createWMSLayer(layerName, opacity) {
+        if (!layerName) return null;
+        return L.tileLayer.wms(CONFIG.geoServer.wmsUrl, {
+            layers: layerName,
+            format: 'image/png',
+            transparent: true,
+            version: '1.1.1',
+            srs: 'EPSG:4326',
+            attribution: '土壤专题数据 @ GeoServer',
+            opacity: opacity || 0.9,
+            tileSize: 512
+        });
+    }
+
+    // Initialize layers: xianqu as visible base, theme layer on top
+    xianquLayer = createWMSLayer('fjsoil:xianqu', 0.9);
+    if (xianquLayer) xianquLayer.addTo(map);
+    wmsLayer = null;  // No extra theme layer for xianqu-only view
+    // (xianquLayer serves as both base and theme when on soil_all_group)
+
+    function switchTheme(themeKey) {
+        if (!CONFIG.themes[themeKey] || currentThemeKey === themeKey) return;
+
+        // Remove current theme overlay (never touch xianquLayer)
+        if (wmsLayer) { map.removeLayer(wmsLayer); wmsLayer = null; }
+
+        // Ensure xianqu base is visible
+        if (!xianquLayer) {
+            xianquLayer = createWMSLayer('fjsoil:xianqu', 0.35);
+            if (xianquLayer) xianquLayer.addTo(map);
+        }
+
+        if (themeKey === 'soil_all_group') {
+            // Xianqu-only: make base fully visible, no overlay needed
+            xianquLayer.setOpacity(0.9);
+            wmsLayer = null;
+            // 缩放回全省视图，约 1:50km 比例尺
+            map.flyTo(CONFIG.map.center, 8, { duration: 1.2 });
+        } else {
+            // Organic/Acid: dim xianqu as background
+            xianquLayer.setOpacity(0.5);
+            // Add thematic layer on top
+            var themeLayerName = CONFIG.themes[themeKey].fullName;
+            wmsLayer = createWMSLayer(themeLayerName, 0.85);
+            if (!wmsLayer) { showError('无法加载专题: ' + themeKey); return; }
+            wmsLayer.addTo(map);
+            // 缓慢缩放到永定数据区
+            map.flyToBounds(CONFIG.map.yongdingBounds, { padding: [10, 10], duration: 1.2, maxZoom: 18 });
+        }
+
+        currentThemeKey = themeKey;
+
+        // Update desktop buttons
+        document.querySelectorAll('#themeGroupDesktop .theme-btn').forEach(btn => {
+            const g = btn.getAttribute('data-group');
+            btn.classList.toggle('active', g === themeKey);
+        });
+        // Update mobile theme buttons
+        document.querySelectorAll('.sheet-theme-btn').forEach(btn => {
+            const g = btn.getAttribute('data-group');
+            btn.classList.toggle('active', g === themeKey);
+        });
+
+        // Update info display
+        const dn = CONFIG.themes[themeKey].displayName;
+        document.getElementById('themeName').innerText = dn;
+        const mobileTitle = document.getElementById('sheetInfoThemeName');
+        if (mobileTitle) mobileTitle.innerText = dn;
+
+        // Update legend and UI
+        updateLegend();
+        updateSheetLegend();
+
+        // Refresh county selector for new theme
+        initCountySelect();
+
+        // Clear previous query results but remember county selection
+        var savedCounty = _selectedCounty;
+        closeAttrPanel();
+        clearSelection();
+        _advancedStatsOpen = false;
+        var advContent = document.getElementById('advStatsContent');
+        if (advContent) advContent.style.display = 'none';
+        var advBtn = document.getElementById('advStatsToggleText');
+        if (advBtn) advBtn.textContent = '展开高级统计';
+
+        // If a county was selected, auto-query for the new theme
+        if (savedCounty) {
+            _selectedCounty = savedCounty;
+            var cql2 = buildCqlFilter(getCountyField(), savedCounty);
+            runWFSQuery(null, cql2);
+        }
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 3: LEGEND
+    // ──────────────────────────────────────────────────
+    function getLegendHtml(legendType) {
+        const items = CONFIG.legends[legendType];
+        if (!items) return '';
+        return items.map(item =>
+            `<div class="legend-item">
+                <div class="legend-color" style="background:${item.color};"></div>
+                <div class="legend-label">${item.range}${item.label ? ' (' + item.label + ')' : ''}</div>
+             </div>`
+        ).join('');
+    }
+
+    function updateLegend() {
+        const lt = CONFIG.themes[currentThemeKey].legendType;
+        const panel = document.getElementById('legendPanel');
+        const content = document.getElementById('legendContent');
+        if (lt === 'county') {
+            panel.style.display = 'none';
+        } else {
+            panel.style.display = 'block';
+            content.innerHTML = getLegendHtml(lt);
+        }
+    }
+
+    function updateSheetLegend() {
+        const lt = CONFIG.themes[currentThemeKey].legendType;
+        const legendDiv = document.getElementById('sheetLegend');
+        if (!legendDiv) return;
+        if (lt === 'county') {
+            legendDiv.innerHTML = '<p style="color:#aaa;font-size:12px;">县区标签专题图无分级图例</p>';
+        } else {
+            const items = CONFIG.legends[lt] || [];
+            legendDiv.innerHTML = '<div style="font-size:12px;color:#ddd;margin-bottom:6px;font-weight:600;">图例说明</div>' +
+                items.map(function(item) {
+                    var label = item.range + (item.label ? ' (' + item.label + ')' : '');
+                    return '<div class="sheet-legend-item">' +
+                        '<div class="sheet-legend-color" style="background:' + item.color + ';"></div>' +
+                        '<div class="sheet-legend-label">' + label + '</div>' +
+                        '</div>';
+                }).join('');
+        }
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 4: CLICK-TO-QUERY (GetFeatureInfo)
+    // ──────────────────────────────────────────────────
+    function handleMapClick(e) {
+        if (drawState === 'drawing') return;
+        if (_measureMode) return;
+        if (Date.now() - _lastDrawTime < 350) return;
+
+        if (_getFeatureInfoController) _getFeatureInfoController.abort();
+        _getFeatureInfoController = new AbortController();
+
+        const theme = CONFIG.themes[currentThemeKey];
+        const size = map.getSize();
+        const containerPoint = map.latLngToContainerPoint(e.latlng);
+        const bbox = map.getBounds().toBBoxString(); // "minx,miny,maxx,maxy"
+
+        const params = new URLSearchParams({
+            SERVICE: 'WMS',
+            VERSION: '1.1.1',
+            REQUEST: 'GetFeatureInfo',
+            LAYERS: theme.fullName,
+            STYLES: '',
+            SRS: 'EPSG:4326',
+            BBOX: bbox,
+            WIDTH: size.x,
+            HEIGHT: size.y,
+            QUERY_LAYERS: theme.fullName,
+            INFO_FORMAT: 'application/json',
+            X: Math.round(containerPoint.x),
+            Y: Math.round(containerPoint.y),
+            FEATURE_COUNT: 10
+        });
+
+        const url = `${CONFIG.geoServer.wmsUrl}?${params.toString()}`;
+        showLoading(true);
+
+        fetch(url, { mode: 'cors', signal: _getFeatureInfoController.signal })
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const ct = r.headers.get('content-type') || '';
+                if (ct.includes('application/json')) return r.json();
+                return r.text(); // fallback
+            })
+            .then(data => {
+                showLoading(false);
+                const features = parseGetFeatureInfoResponse(data);
+                showClickMarker(e.latlng);
+                if (features && features.length > 0) {
+                    showAttrResults(features);
+                } else {
+                    showAttrResults([], '此处无要素数据');
+                }
+            })
+            .catch(err => {
+                showLoading(false);
+                if (err.name === 'AbortError') return;
+                console.error('GetFeatureInfo error:', err);
+                var msg2 = err.message.includes('Failed to fetch') || err.message.includes('NetworkError')
+                    ? 'CORS/网络错误：请通过HTTP服务器打开页面，或配置GeoServer CORS'
+                    : '查询失败：' + err.message;
+                showError(msg2);
+                showAttrResults([], '查询失败，请检查GeoServer连接');
+            });
+    }
+
+    function parseGetFeatureInfoResponse(data) {
+        if (!data) return [];
+        // GeoJSON FeatureCollection
+        if (data.type === 'FeatureCollection' && Array.isArray(data.features)) {
+            return data.features;
+        }
+        // Single GeoJSON Feature
+        if (data.type === 'Feature') {
+            return [data];
+        }
+        // Plain text / HTML fallback
+        if (typeof data === 'string') {
+            if (data.includes('Feature') || data.includes('feature')) {
+                console.warn('GetFeatureInfo returned non-JSON, raw:', data.substring(0, 300));
+            }
+            return [];
+        }
+        return [];
+    }
+
+    function showClickMarker(latlng) {
+        if (clickMarker) map.removeLayer(clickMarker);
+        clickMarker = L.circleMarker(latlng, {
+            radius: 7,
+            color: '#4fc3f7',
+            fillColor: '#4fc3f7',
+            fillOpacity: 0.35,
+            weight: 2,
+            className: 'click-marker'
+        }).addTo(map);
+        // Auto-remove after 8 seconds
+        setTimeout(() => {
+            if (clickMarker) { map.removeLayer(clickMarker); clickMarker = null; }
+        }, 8000);
+    }
+
+    function showAttrResults(features, emptyMsg) {
+        // Desktop
+        const panel = document.getElementById('attrPanel');
+        const content = document.getElementById('attrContent');
+
+        if (!features || features.length === 0) {
+            content.innerHTML = `<span class="no-feature-msg">${emptyMsg || '此处无要素数据'}</span>`;
+        } else {
+            let html = '';
+            features.forEach((f, fi) => {
+                const props = f.properties || {};
+                if (features.length > 1) {
+                    html += `<div style="font-weight:600;color:#4fc3f7;margin:6px 0 2px;font-size:10px;">要素 #${fi + 1}</div>`;
+                }
+                html += '<table class="attr-table">';
+                const keys = Object.keys(props);
+                if (keys.length === 0) {
+                    html += '<tr><td colspan="2" style="color:#888;">无属性数据</td></tr>';
+                } else {
+                    keys.forEach(k => {
+                        const v = props[k];
+                        const displayVal = (v !== null && v !== undefined) ? String(v) : '—';
+                        html += `<tr><td>${escHtml(k)}</td><td>${escHtml(displayVal)}</td></tr>`;
+                    });
+                }
+                html += '</table>';
+            });
+            content.innerHTML = html;
+        }
+        panel.classList.add('visible');
+
+        // Mobile
+        document.getElementById('sheetAttrContent').innerHTML = content.innerHTML;
+    }
+
+    function closeAttrPanel() {
+        document.getElementById('attrPanel').classList.remove('visible');
+    }
+
+    function escHtml(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 5: BOX-SELECT DRAWING
+    // ──────────────────────────────────────────────────
+    let drawHandlers = null;
+    let _disableClickProp = null; // Cleanup for click propagation blocker
+
+    function initDrawHandlers() {
+        if (drawHandlers) return;
+        drawHandlers = {
+            down: null, move: null, up: null, key: null
+        };
+        const container = map.getContainer();
+
+        drawHandlers.down = function(e) {
+            if (drawState !== 'idle') return;
+            // Only respond to left click
+            if (e.originalEvent && e.originalEvent.button !== undefined && e.originalEvent.button !== 0) return;
+            drawState = 'drawing';
+            drawStartLatLng = e.latlng;
+            drawRect = L.rectangle([drawStartLatLng, drawStartLatLng], {
+                color: '#2979ff',
+                weight: 2,
+                dashArray: '8 4',
+                fillColor: '#2979ff',
+                fillOpacity: 0.08,
+                interactive: false
+            }).addTo(map);
+            // Re-enable previous blocker if exists
+            if (_disableClickProp && typeof _disableClickProp === 'function') { _disableClickProp(); _disableClickProp = null; }
+            _disableClickProp = L.DomEvent.disableClickPropagation(container);
+            map.dragging.disable();
+        };
+
+        drawHandlers.move = function(e) {
+            if (drawState !== 'drawing' || !drawRect) return;
+            drawRect.setBounds(L.latLngBounds(drawStartLatLng, e.latlng));
+        };
+
+        drawHandlers.up = function(e) {
+            if (drawState !== 'drawing') return;
+            drawState = 'drawn';
+            _lastDrawTime = Date.now();
+            map.dragging.enable();
+            // Re-enable click propagation after a short delay (let current click cycle finish)
+            setTimeout(() => {
+                if (_disableClickProp && typeof _disableClickProp === 'function') {
+                    _disableClickProp(); _disableClickProp = null;
+                }
+            }, 100);
+            if (drawRect) {
+                selectedBounds = drawRect.getBounds();
+                drawRect.setStyle({
+                    color: '#ff9800',
+                    weight: 3,
+                    dashArray: '',
+                    fillColor: '#ff9800',
+                    fillOpacity: 0.12
+                });
+                // 保留 drawRect 引用，以便 clearSelection() 可以移除它
+            }
+            deactivateDrawModeUI();
+            runWFSQuery(selectedBounds);
+        };
+
+        drawHandlers.key = function(e) {
+            if (e.key === 'Escape') {
+                cancelDrawing();
+            }
+        };
+
+        map.on('mousedown', drawHandlers.down);
+        map.on('mousemove', drawHandlers.move);
+        map.on('mouseup', drawHandlers.up);
+        document.addEventListener('keydown', drawHandlers.key);
+    }
+
+    function toggleDrawMode() {
+        if (drawState === 'idle') {
+            activateDrawMode();
+        } else if (drawState === 'drawing') {
+            cancelDrawing();
+        } else if (drawState === 'drawn') {
+            clearSelection();
+            activateDrawMode();
+        }
+    }
+
+    function queryCurrentMapBounds() {
+        if (drawState === 'drawing') cancelDrawing();
+        clearSelection();
+        const bounds = map.getBounds();
+        selectedBounds = bounds;
+        drawRect = L.rectangle(bounds, {
+            color: '#4caf50', weight: 2, dashArray: '6 6', fillOpacity: 0.08, interactive: false
+        }).addTo(map);
+        drawState = 'drawn';
+        updateDrawButtonState(false);
+        runWFSQuery(bounds);
+    }
+
+    function activateDrawMode() {
+        if (drawState === 'drawing') return;
+        // Clear previous selection first
+        if (drawState === 'drawn') clearSelection();
+        initDrawHandlers();
+        drawState = 'idle';
+        map.getContainer().classList.add('map-crosshair');
+        updateDrawButtonState(true);
+    }
+
+    function deactivateDrawModeUI() {
+        map.getContainer().classList.remove('map-crosshair');
+        updateDrawButtonState(false);
+    }
+
+    function cancelDrawing() {
+        if (drawRect) { map.removeLayer(drawRect); drawRect = null; }
+        if (_disableClickProp && typeof _disableClickProp === 'function') { _disableClickProp(); _disableClickProp = null; }
+        drawState = 'idle';
+        drawStartLatLng = null;
+        map.dragging.enable();
+        map.getContainer().classList.remove('map-crosshair');
+        updateDrawButtonState(false);
+    }
+
+    function clearSelection() {
+        if (drawRect) { map.removeLayer(drawRect); drawRect = null; }
+        if (highlightLayer) { map.removeLayer(highlightLayer); highlightLayer = null; }
+        if (clickMarker) { map.removeLayer(clickMarker); clickMarker = null; }
+        if (_disableClickProp && typeof _disableClickProp === 'function') { _disableClickProp(); _disableClickProp = null; }
+        drawState = 'idle';
+        drawStartLatLng = null;
+        selectedBounds = null;
+        currentFeatures = [];
+        currentStats = null;
+        currentFilterValue = null;
+        _lastDrawTime = 0;
+        map.dragging.enable();
+        map.getContainer().classList.remove('map-crosshair');
+        updateDrawButtonState(false);
+        closeStatsPanel();
+    }
+
+    function updateDrawButtonState(active) {
+        const btn = document.getElementById('btnBoxSelect');
+        const fab = document.getElementById('fabDraw');
+        if (active) {
+            btn.classList.add('active-tool');
+            btn.innerHTML = '<i class="fas fa-vector-square"></i> 正在框选... (ESC取消)';
+            fab.classList.add('active-fab');
+        } else {
+            btn.classList.remove('active-tool');
+            btn.innerHTML = '<i class="fas fa-vector-square"></i> 框选统计';
+            fab.classList.remove('active-fab');
+        }
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 6: WFS QUERY & STATISTICS
+    // ──────────────────────────────────────────────────
+    function buildWFSGetFeatureUrl(bbox, cqlExtra) {
+        const theme = CONFIG.themes[currentThemeKey];
+        if (!theme.wfsLayer) return null;
+
+        var url = CONFIG.geoServer.wfsUrl + '?service=WFS&version=' + CONFIG.wfs.version +
+            '&request=GetFeature&typeNames=' + encodeURIComponent(theme.wfsLayer) +
+            '&outputFormat=' + encodeURIComponent(CONFIG.wfs.outputFormat) +
+            '&srsName=EPSG:4326&count=' + CONFIG.wfs.maxFeatures;
+
+        if (bbox) {
+            // 使用 WFS 标准 BBOX 参数，比 CQL BBOX 更可靠
+            var bboxStr = bbox.toBBoxString(); // "minx,miny,maxx,maxy"
+            url += '&BBOX=' + bboxStr + ',EPSG:4326';
+            if (cqlExtra) {
+                url += '&CQL_FILTER=' + encodeURIComponent(cqlExtra);
+            }
+            console.log('WFS URL:', url);
+        } else if (cqlExtra) {
+            url += '&CQL_FILTER=' + cqlExtra;
+        }
+
+        return url;
+    }
+
+    async function runWFSQuery(bbox, cqlExtra, countyZoom) {
+        const url = buildWFSGetFeatureUrl(bbox, cqlExtra);
+        // 县域查询时保存标志，用于控制缩放级别
+        if (countyZoom) runWFSQuery._countyMode = true;
+        else runWFSQuery._countyMode = false;
+        if (!url) {
+            showError('当前专题不支持WFS查询，请检查wfsLayer配置');
+            return;
+        }
+        showLoading(true);
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), CONFIG.wfs.timeout);
+            const resp = await fetch(url, { mode: 'cors', signal: controller.signal });
+            clearTimeout(timeout);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            showLoading(false);
+            if (data.type === 'FeatureCollection' && Array.isArray(data.features)) {
+                currentFeatures = data.features;
+                if (currentFeatures.length === 0) {
+                    showError('框选范围内无匹配数据');
+                    closeStatsPanel();
+                    return;
+                }
+                computeAndShowStats();
+                highlightFeatures(data.features);
+            } else {
+                showError('WFS返回非预期格式');
+                closeStatsPanel();
+            }
+        } catch (err) {
+            showLoading(false);
+            console.error('WFS query error:', err);
+            if (err.name === 'AbortError') {
+                showError('WFS查询超时，请缩小框选范围或检查GeoServer');
+            } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+                showError('CORS/网络错误：请通过HTTP服务器打开页面，或配置GeoServer CORS');
+            } else {
+                showError(`WFS查询失败：${err.message}`);
+            }
+            closeStatsPanel();
+        }
+    }
+
+    function computeAndShowStats() {
+        const theme = CONFIG.themes[currentThemeKey];
+        const valueField = theme.valueField;
+        const features = currentFeatures;
+
+        // Compute area for each feature using Turf.js
+        const areas_mu = [];  // 亩
+        const values = [];
+        const rows = [];
+
+        features.forEach((f, idx) => {
+            let areaSqm = 0;
+            try {
+                areaSqm = turf.area(f); // square meters
+            } catch (e) {
+                console.warn(`turf.area failed for feature ${idx}:`, e);
+            }
+            const areaMu = areaSqm / 666.667; // convert to 亩
+            areas_mu.push(areaMu);
+
+            const props = f.properties || {};
+            const val = valueField ? parseFloat(props[valueField]) : NaN;
+            if (!isNaN(val)) values.push(val);
+
+            // Accumulate county names
+            var cf = getCountyField();
+            if (props[cf]) _countyNames.add(props[cf]);
+
+            rows.push({
+                index: idx + 1,
+                area_mu: areaMu,
+                value: isNaN(val) ? null : val,
+                props: props
+            });
+        });
+
+        const totalArea = areas_mu.reduce((a, b) => a + b, 0);
+        const avgVal = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
+        const minVal = values.length > 0 ? Math.min(...values) : null;
+        const maxVal = values.length > 0 ? Math.max(...values) : null;
+        const stdDev = values.length > 1
+            ? Math.sqrt(values.reduce((s, v) => s + (v - avgVal) ** 2, 0) / values.length)
+            : null;
+
+        // Filtered stats (below/above threshold)
+        let filteredArea = 0;
+        let filteredCount = 0;
+        const ft = theme.filterThresholds;
+        if (ft && valueField) {
+            const threshold = currentFilterValue !== null ? currentFilterValue : ft.defaultThreshold;
+            const op = ft.operator;
+            features.forEach((f, idx) => {
+                const props = f.properties || {};
+                const val = parseFloat(props[valueField]);
+                if (!isNaN(val)) {
+                    let match = false;
+                    switch (op) {
+                        case '<':  match = val < threshold; break;
+                        case '>':  match = val > threshold; break;
+                        case '<=': match = val <= threshold; break;
+                        case '>=': match = val >= threshold; break;
+                    }
+                    if (match) {
+                        filteredCount++;
+                        filteredArea += areas_mu[idx];
+                    }
+                }
+            });
+        }
+
+        currentStats = {
+            allValues: valueField ? values.slice() : [],
+            featureCount: features.length,
+            totalArea_mu: totalArea,
+            avgValue: avgVal,
+            minValue: minVal,
+            maxValue: maxVal,
+            stdDev: stdDev,
+            filteredCount: filteredCount,
+            filteredArea_mu: filteredArea,
+            rows: rows,
+            valueField: valueField
+        };
+
+        renderStatsPanel();
+        renderSheetStats();
+    }
+
+    function renderStatsPanel() {
+        const s = currentStats;
+        const theme = CONFIG.themes[currentThemeKey];
+        const ft = theme.filterThresholds;
+        if (!s) return;
+
+        let html = '';
+        html += `<div class="stat-row"><span>匹配地块数</span><span class="stat-val">${s.featureCount} 个</span></div>`;
+        html += `<div class="stat-row"><span>总面积</span><span class="stat-val">${s.totalArea_mu.toFixed(2)} 亩</span></div>`;
+        if (s.avgValue !== null) {
+            html += `<div class="stat-row"><span>平均值</span><span class="stat-val">${s.avgValue.toFixed(4)} ${ft ? ft.label : ''}</span></div>`;
+            html += `<div class="stat-row"><span>最小值</span><span class="stat-val">${s.minValue.toFixed(4)}</span></div>`;
+            html += `<div class="stat-row"><span>最大值</span><span class="stat-val">${s.maxValue.toFixed(4)}</span></div>`;
+            html += `<div class="stat-row"><span>标准差</span><span class="stat-val">${s.stdDev.toFixed(4)}</span></div>`;
+        }
+        if (ft && s.valueField) {
+            const threshold = currentFilterValue !== null ? currentFilterValue : ft.defaultThreshold;
+            html += `<div class="stat-row" style="color:#ffab40;"><span>⚡ ${escHtml(ft.label)} ${ft.operator} ${threshold.toFixed(4)}</span><span class="stat-val">${s.filteredCount} 块 / ${s.filteredArea_mu.toFixed(2)} 亩</span></div>`;
+        }
+
+        document.getElementById('statsContent').innerHTML = html;
+
+        // Show filter section if theme supports it
+        const filterSection = document.getElementById('filterSection');
+        if (ft && s.valueField) {
+            filterSection.style.display = 'block';
+            document.getElementById('filterLabel').textContent = ft.label;
+            document.getElementById('filterOp').value = ft.operator;
+            const slider = document.getElementById('filterSlider');
+            slider.min = ft.min;
+            slider.max = ft.max;
+            slider.step = ft.step;
+            const threshold = currentFilterValue !== null ? currentFilterValue : ft.defaultThreshold;
+            slider.value = threshold;
+            document.getElementById('filterVal').textContent = threshold.toFixed(ft.step < 1 ? 4 : 1);
+        } else {
+            filterSection.style.display = 'none';
+        }
+
+        // Render mini table (top 30 rows)
+        if (s.rows.length > 0) {
+            var sortCol = _sortState.column;
+            var sortDir = _sortState.direction;
+            var idxCls = sortCol === 'index' ? ' sorted-' + sortDir : '';
+            var areaCls = sortCol === 'area_mu' ? ' sorted-' + sortDir : '';
+            var valCls = (sortCol === 'value' || sortCol === null) ? ' sorted-' + sortDir : '';
+            let tbl = '<table class="stats-table"><thead><tr><th class="' + idxCls + '" onclick="sortTable(\'index\')"># <i class="fas fa-sort sort-icon"></i></th><th class="' + areaCls + '" onclick="sortTable(\'area_mu\')">面积(亩) <i class="fas fa-sort sort-icon"></i></th>';
+            if (s.valueField) tbl += '<th class="' + valCls + '" onclick="sortTable(\'value\')">' + escHtml(s.valueField) + ' <i class="fas fa-sort sort-icon"></i></th>';
+            tbl += '</tr></thead><tbody>';
+            const showRows = s.rows.slice(0, 30);
+            showRows.forEach(r => {
+                tbl += `<tr><td>${r.index}</td><td>${r.area_mu.toFixed(2)}</td>`;
+                if (s.valueField) tbl += `<td>${r.value !== null ? r.value.toFixed(4) : '—'}</td>`;
+                tbl += '</tr>';
+            });
+            if (s.rows.length > 30) tbl += `<tr><td colspan="3" style="text-align:center;color:#888;">... 共 ${s.rows.length} 条，仅显示前30条</td></tr>`;
+            tbl += '</tbody></table>';
+            document.getElementById('statsTableWrap').innerHTML = tbl;
+        } else {
+            document.getElementById('statsTableWrap').innerHTML = '';
+        }
+
+        // Show/hide advanced stats toggle
+        var advToggle = document.getElementById('advStatsToggle');
+        var addFilterBtn = document.getElementById('addFilterBtn');
+        if (s.valueField && s.allValues && s.allValues.length >= 4) {
+            advToggle.style.display = 'block';
+        } else {
+            advToggle.style.display = 'none';
+        }
+        // Show add-filter button when primary filter is active
+        if (ft && s.valueField) {
+            addFilterBtn.style.display = _secondFilterActive ? 'none' : 'block';
+        } else {
+            addFilterBtn.style.display = 'none';
+        }
+        // Hide multi-filter section if not active
+        if (!_secondFilterActive) {
+            document.getElementById('multiFilterSection').style.display = 'none';
+        }
+
+        // Update county selector
+        initCountySelect();
+
+        document.getElementById('statsPanel').classList.add('visible');
+        updateQuickResult();
+    }
+
+    function renderSheetStats() {
+        const s = currentStats;
+        const theme = CONFIG.themes[currentThemeKey];
+        const ft = theme.filterThresholds;
+        if (!s) {
+            document.getElementById('sheetStatsContent').innerHTML = '<span style="color:#888;">无统计数据</span>';
+            return;
+        }
+
+        let html = '';
+        html += `<div class="sheet-stat-row"><span>匹配地块</span><span class="sheet-stat-val">${s.featureCount} 个</span></div>`;
+        html += `<div class="sheet-stat-row"><span>总面积</span><span class="sheet-stat-val">${s.totalArea_mu.toFixed(2)} 亩</span></div>`;
+        if (s.avgValue !== null) {
+            html += `<div class="sheet-stat-row"><span>平均值</span><span class="sheet-stat-val">${s.avgValue.toFixed(4)}</span></div>`;
+            html += `<div class="sheet-stat-row"><span>最小值 / 最大值</span><span class="sheet-stat-val">${s.minValue.toFixed(4)} / ${s.maxValue.toFixed(4)}</span></div>`;
+        }
+        if (ft && s.valueField) {
+            const threshold = currentFilterValue !== null ? currentFilterValue : ft.defaultThreshold;
+            html += `<div class="sheet-stat-row" style="color:#ffab40;"><span>⚡ ${escHtml(ft.label)} ${ft.operator} ${threshold.toFixed(4)}</span><span class="sheet-stat-val">${s.filteredCount} 块 / ${s.filteredArea_mu.toFixed(2)} 亩</span></div>`;
+        }
+        document.getElementById('sheetStatsContent').innerHTML = html;
+
+        // Filter slider
+        const filterRow = document.getElementById('sheetFilterRow');
+        if (ft && s.valueField) {
+            filterRow.style.display = 'flex';
+            document.getElementById('sheetFilterOp').value = ft.operator;
+            const slider = document.getElementById('sheetFilterSlider');
+            slider.min = ft.min;
+            slider.max = ft.max;
+            slider.step = ft.step;
+            const threshold = currentFilterValue !== null ? currentFilterValue : ft.defaultThreshold;
+            slider.value = threshold;
+            document.getElementById('sheetFilterVal').textContent = threshold.toFixed(ft.step < 1 ? 4 : 1);
+        } else {
+            filterRow.style.display = 'none';
+        }
+
+        // Mini table
+        if (s.rows.length > 0) {
+            var sortCol = _sortState.column;
+            var sortDir = _sortState.direction;
+            var idxCls = sortCol === 'index' ? ' sorted-' + sortDir : '';
+            var areaCls = sortCol === 'area_mu' ? ' sorted-' + sortDir : '';
+            var valCls = (sortCol === 'value' || sortCol === null) ? ' sorted-' + sortDir : '';
+            let tbl = '<table class="stats-table"><thead><tr><th class="' + idxCls + '" onclick="sortTable(\'index\')"># <i class="fas fa-sort sort-icon"></i></th><th class="' + areaCls + '" onclick="sortTable(\'area_mu\')">面积(亩) <i class="fas fa-sort sort-icon"></i></th>';
+            if (s.valueField) tbl += '<th class="' + valCls + '" onclick="sortTable(\'value\')">' + escHtml(s.valueField) + ' <i class="fas fa-sort sort-icon"></i></th>';
+            tbl += '</tr></thead><tbody>';
+            const showRows = s.rows.slice(0, 20);
+            showRows.forEach(r => {
+                tbl += `<tr><td>${r.index}</td><td>${r.area_mu.toFixed(2)}</td>`;
+                if (s.valueField) tbl += `<td>${r.value !== null ? r.value.toFixed(4) : '—'}</td>`;
+                tbl += '</tr>';
+            });
+            tbl += '</tbody></table>';
+            document.getElementById('sheetStatsTableWrap').innerHTML = tbl;
+        } else {
+            document.getElementById('sheetStatsTableWrap').innerHTML = '';
+        }
+
+        // Switch to stats tab on mobile
+        if (isMobile) switchSheetTab('stats');
+    }
+
+    function onFilterSlider(val) {
+        const ft = CONFIG.themes[currentThemeKey].filterThresholds;
+        if (!ft) return;
+        const v = parseFloat(val);
+        document.getElementById('filterVal').textContent = v.toFixed(ft.step < 1 ? 4 : 1);
+        const mSlider = document.getElementById('sheetFilterSlider');
+        if (mSlider) mSlider.value = val;
+        document.getElementById('sheetFilterVal').textContent = v.toFixed(ft.step < 1 ? 4 : 1);
+        applyFilter();
+    }
+
+    function onSheetFilterSlider(val) {
+        const ft = CONFIG.themes[currentThemeKey].filterThresholds;
+        if (!ft) return;
+        const v = parseFloat(val);
+        document.getElementById('sheetFilterVal').textContent = v.toFixed(ft.step < 1 ? 4 : 1);
+        document.getElementById('filterSlider').value = val;
+        document.getElementById('filterVal').textContent = v.toFixed(ft.step < 1 ? 4 : 1);
+        applyFilter();
+    }
+
+    function applyFilter() {
+        var ft = CONFIG.themes[currentThemeKey].filterThresholds;
+        if (!ft && !_secondFilterActive) return;
+        if (!currentFeatures || currentFeatures.length === 0) return;
+
+        const isMobileLocal = isMobile;
+        const opEl = isMobileLocal ? document.getElementById('sheetFilterOp') : document.getElementById('filterOp');
+        const sliderEl = isMobileLocal ? document.getElementById('sheetFilterSlider') : document.getElementById('filterSlider');
+        const op = opEl ? opEl.value : '<';
+        const val = sliderEl ? parseFloat(sliderEl.value) : null;
+
+        // Sync operators
+        if (document.getElementById('filterOp')) document.getElementById('filterOp').value = op;
+        if (document.getElementById('sheetFilterOp')) document.getElementById('sheetFilterOp').value = op;
+
+        currentFilterValue = val;
+
+        // Recompute local stats (no server re-query needed since we have all features)
+        const theme = CONFIG.themes[currentThemeKey];
+        const valueField = theme.valueField;
+        const features = currentFeatures;
+
+        const areas_mu = features.map(f => {
+            try { return turf.area(f) / 666.667; } catch (e) { return 0; }
+        });
+
+        // Get second filter values
+        var field2 = null, op2 = null, val2 = null;
+        if (_secondFilterActive) {
+            var sel2 = document.getElementById('filterField2');
+            var op2el = document.getElementById('filterOp2');
+            var val2el = document.getElementById('filterVal2');
+            field2 = sel2 ? sel2.value : null;
+            op2 = op2el ? op2el.value : null;
+            val2 = val2el ? parseFloat(val2el.value) : NaN;
+            if (!field2 || isNaN(val2)) _secondFilterActive = false;
+        }
+
+        function testCondition(fval, op, threshold) {
+            switch (op) {
+                case '<':  return fval < threshold;
+                case '>':  return fval > threshold;
+                case '<=': return fval <= threshold;
+                case '>=': return fval >= threshold;
+                case '=':  return Math.abs(fval - threshold) < 0.0001;
+                default: return false;
+            }
+        }
+
+        let filteredArea = 0, filteredCount = 0;
+        features.forEach((f, idx) => {
+            const props = f.properties || {};
+            const fval = parseFloat(props[valueField]);
+
+            var match1 = false;
+            if (!isNaN(fval) && val !== null) {
+                match1 = testCondition(fval, op, val);
+            } else if (val === null) {
+                match1 = true; // No primary filter
+            }
+
+            var match2 = true;
+            if (_secondFilterActive && field2) {
+                var fval2 = parseFloat(props[field2]);
+                if (!isNaN(fval2)) {
+                    match2 = testCondition(fval2, op2, val2);
+                } else {
+                    match2 = false;
+                }
+            }
+
+            var finalMatch = _secondFilterActive
+                ? (_filterLogic === 'AND' ? (match1 && match2) : (match1 || match2))
+                : match1;
+
+            if (finalMatch) { filteredCount++; filteredArea += areas_mu[idx]; }
+        });
+
+        currentStats.filteredCount = filteredCount;
+        currentStats.filteredArea_mu = filteredArea;
+        if (ft) ft.operator = op;
+
+        renderStatsPanel();
+        renderSheetStats();
+    }
+
+    function highlightFeatures(features) {
+        if (highlightLayer) map.removeLayer(highlightLayer);
+        highlightLayer = L.geoJSON({ type: 'FeatureCollection', features: features }, {
+            style: {
+                color: '#ff9800',
+                weight: 2,
+                fillColor: '#ff9800',
+                fillOpacity: 0.18
+            },
+            className: 'highlight-layer'
+        }).addTo(map);
+        // Smooth fly to bounds
+        try {
+            const bounds = L.geoJSON({ type: 'FeatureCollection', features: features }).getBounds();
+            if (bounds.isValid()) {
+                var zoomOpts = runWFSQuery._countyMode
+                    ? { padding: [50, 50], maxZoom: 12, duration: 1.0 }
+                    : { padding: [40, 40], maxZoom: 14, duration: 0.8 };
+                map.flyToBounds(bounds, zoomOpts);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function closeStatsPanel() {
+        document.getElementById('statsPanel').classList.remove('visible');
+        document.getElementById('sheetStatsContent').innerHTML = '<span style="color:#888;">请先使用框选工具在地图上选择范围</span>';
+        document.getElementById('sheetFilterRow').style.display = 'none';
+        document.getElementById('sheetStatsTableWrap').innerHTML = '';
+        // Reset advanced stats and filter UI
+        _advancedStatsOpen = false;
+        _secondFilterActive = false;
+        var advContent = document.getElementById('advStatsContent');
+        if (advContent) advContent.style.display = 'none';
+        var advBtn = document.getElementById('advStatsToggleText');
+        if (advBtn) advBtn.textContent = '展开高级统计';
+        document.getElementById('advStatsToggle').style.display = 'none';
+        document.getElementById('addFilterBtn').style.display = 'none';
+        document.getElementById('multiFilterSection').style.display = 'none';
+        document.getElementById('filterSection').style.display = 'none';
+        document.getElementById('countySelectRow').style.display = 'none';
+        var qr = document.getElementById('quickResult');
+        if (qr) qr.style.display = 'none';
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 7: EXPORT
+    // ──────────────────────────────────────────────────
+    function exportCSV() {
+        if (!currentFeatures || currentFeatures.length === 0) {
+            showError('无数据可导出，请先进行框选查询');
+            return;
+        }
+        const theme = CONFIG.themes[currentThemeKey];
+        const fields = theme.attributeFields || [];
+        const areas_mu = currentFeatures.map(f => {
+            try { return turf.area(f) / 666.667; } catch (e) { return 0; }
+        });
+
+        // Build CSV
+        let csv = '﻿'; // BOM for Excel UTF-8
+        const header = ['序号', '面积_亩', ...fields].join(',');
+        csv += header + '\n';
+
+        currentFeatures.forEach((f, idx) => {
+            const props = f.properties || {};
+            const row = [idx + 1, areas_mu[idx].toFixed(4)];
+            fields.forEach(fd => {
+                const v = props[fd];
+                if (v === null || v === undefined) row.push('');
+                else if (typeof v === 'string' && (v.includes(',') || v.includes('"') || v.includes('\n'))) {
+                    row.push('"' + v.replace(/"/g, '""') + '"');
+                } else {
+                    row.push(String(v));
+                }
+            });
+            csv += row.join(',') + '\n';
+        });
+
+        // Add summary rows
+        if (currentStats) {
+            csv += '\n';
+            csv += '统计摘要\n';
+            csv += `地块总数,${currentStats.featureCount}\n`;
+            csv += `总面积(亩),${currentStats.totalArea_mu.toFixed(4)}\n`;
+            if (currentStats.avgValue !== null) csv += `平均值,${currentStats.avgValue.toFixed(4)}\n`;
+            if (currentStats.minValue !== null) csv += `最小值,${currentStats.minValue.toFixed(4)}\n`;
+            if (currentStats.maxValue !== null) csv += `最大值,${currentStats.maxValue.toFixed(4)}\n`;
+            csv += `筛选地块数,${currentStats.filteredCount}\n`;
+            csv += `筛选面积(亩),${currentStats.filteredArea_mu.toFixed(4)}\n`;
+        }
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `土壤统计_${CONFIG.themes[currentThemeKey].displayName}_${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 8: UI UTILITIES
+    // ──────────────────────────────────────────────────
+    function showLoading(show) {
+        _loadingDepth = Math.max(0, _loadingDepth + (show ? 1 : -1));
+        document.getElementById('loadingOverlay').classList.toggle('visible', _loadingDepth > 0);
+    }
+
+    function showError(msg) {
+        console.error(msg);
+        _errorQueue.push(msg);
+        if (!_errorShowing) _showNextError();
+    }
+    function _showNextError() {
+        if (_errorQueue.length === 0) { _errorShowing = false; return; }
+        _errorShowing = true;
+        var msg = _errorQueue.shift();
+        var toast = document.getElementById('errorToast');
+        toast.textContent = '⚠️ ' + msg;
+        toast.classList.add('visible');
+        clearTimeout(toast._timeout);
+        toast._timeout = setTimeout(function() {
+            toast.classList.remove('visible');
+            _showNextError();
+        }, 5000);
+    }
+
+    function hideError() {
+        document.getElementById('errorToast').classList.remove('visible');
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 9: MOBILE ADAPTATION
+    // ──────────────────────────────────────────────────
+    function detectMobile() {
+        return window.innerWidth <= CONFIG.responsive.mobileMax;
+    }
+
+    function applyLayout() {
+        isMobile = detectMobile();
+        const rightControls = document.getElementById('rightControls');
+        const bottomLeft = document.getElementById('bottomLeft');
+        const debugBtn = document.getElementById('debugBtn');
+        const fabContainer = document.getElementById('fabContainer');
+        const bottomSheet = document.getElementById('bottomSheet');
+
+        if (isMobile) {
+            rightControls.style.display = 'none';
+            bottomLeft.style.display = 'none';
+            debugBtn.style.display = 'none';
+            fabContainer.style.display = 'flex';
+            bottomSheet.style.display = 'flex';
+            // Reset sheet to collapsed
+            bottomSheet.classList.remove('expanded');
+            currentSheetExpanded = false;
+            updateSheetPosition();
+        } else {
+            rightControls.style.display = '';
+            bottomLeft.style.display = '';
+            debugBtn.style.display = '';
+            fabContainer.style.display = 'none';
+            bottomSheet.style.display = 'none';
+            bottomSheet.classList.remove('expanded');
+            currentSheetExpanded = false;
+        }
+    }
+
+    let currentSheetExpanded = false;
+    let sheetTouchStartY = null;
+    let sheetTouchStartTranslate = 0;
+    let sheetDragging = false;
+
+    function initBottomSheet() {
+        const sheet = document.getElementById('bottomSheet');
+        const handle = document.getElementById('sheetHandle');
+
+        // Tap to toggle
+        handle.addEventListener('click', (e) => {
+            if (sheetDragging) return;
+            toggleSheet();
+        });
+
+        // Touch drag
+        handle.addEventListener('touchstart', (e) => {
+            sheetTouchStartY = e.touches[0].clientY;
+            sheetTouchStartTranslate = getSheetTranslateY();
+            sheet.style.transition = 'none';
+            sheetDragging = false;
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            if (sheetTouchStartY === null) return;
+            const deltaY = e.touches[0].clientY - sheetTouchStartY;
+            if (Math.abs(deltaY) > 5) sheetDragging = true;
+            const newTranslate = Math.max(0, Math.min(sheet.offsetHeight - 48, sheetTouchStartTranslate + deltaY));
+            sheet.style.transform = `translateY(${newTranslate}px)`;
+        }, { passive: false });
+
+        document.addEventListener('touchend', () => {
+            if (sheetTouchStartY === null) return;
+            sheet.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+            const currentTranslate = getSheetTranslateY();
+            const halfTranslate = sheet.offsetHeight * 0.35;
+            if (sheetDragging) {
+                if (currentTranslate < halfTranslate) {
+                    sheet.classList.add('expanded');
+                    currentSheetExpanded = true;
+                } else {
+                    sheet.classList.remove('expanded');
+                    currentSheetExpanded = false;
+                }
+                updateSheetPosition();
+            }
+            sheetTouchStartY = null;
+            sheetTouchStartTranslate = 0;
+            sheetDragging = false;
+        });
+    }
+
+    function toggleSheet() {
+        currentSheetExpanded = !currentSheetExpanded;
+        updateSheetPosition();
+    }
+
+    function updateSheetPosition() {
+        const sheet = document.getElementById('bottomSheet');
+        if (currentSheetExpanded) {
+            sheet.classList.add('expanded');
+        } else {
+            sheet.classList.remove('expanded');
+        }
+    }
+
+    function getSheetTranslateY() {
+        const sheet = document.getElementById('bottomSheet');
+        const style = window.getComputedStyle(sheet);
+        const matrix = new DOMMatrixReadOnly(style.transform);
+        return matrix.m42;
+    }
+
+    function switchSheetTab(tabName) {
+        document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active-tab'));
+        document.querySelectorAll('.sheet-section').forEach(s => s.classList.remove('active-section'));
+        const tab = document.querySelector(`.sheet-tab[data-tab="${tabName}"]`);
+        const section = document.getElementById(tabName === 'info' ? 'sheetInfo' :
+            tabName === 'attr' ? 'sheetAttr' : tabName === 'stats' ? 'sheetStats' : 'sheetExport');
+        if (tab) tab.classList.add('active-tab');
+        if (section) section.classList.add('active-section');
+
+        // Expand sheet if collapsed
+        if (!currentSheetExpanded) {
+            currentSheetExpanded = true;
+            updateSheetPosition();
+        }
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 8B: ENHANCED STATISTICS (Percentiles, Histogram)
+    // ──────────────────────────────────────────────────
+    function percentile(sortedArr, p) {
+        if (!sortedArr || sortedArr.length === 0) return null;
+        var idx = (p / 100) * (sortedArr.length - 1);
+        var lo = Math.floor(idx), hi = Math.ceil(idx);
+        if (lo === hi) return sortedArr[lo];
+        return sortedArr[lo] + (sortedArr[hi] - sortedArr[lo]) * (idx - lo);
+    }
+
+    function toggleAdvancedStats() {
+        _advancedStatsOpen = !_advancedStatsOpen;
+        var content = document.getElementById('advStatsContent');
+        var btn = document.getElementById('advStatsToggleText');
+        if (_advancedStatsOpen) {
+            content.style.display = 'block';
+            btn.textContent = '收起高级统计';
+            renderAdvancedStats();
+        } else {
+            content.style.display = 'none';
+            btn.textContent = '展开高级统计';
+        }
+    }
+
+    function renderAdvancedStats() {
+        if (!currentStats || !currentStats.allValues || currentStats.allValues.length < 2) return;
+        var sorted = currentStats.allValues.slice().sort(function(a,b){return a-b;});
+        var q1 = percentile(sorted, 25);
+        var q2 = percentile(sorted, 50);
+        var q3 = percentile(sorted, 75);
+        var iqr = q3 - q1;
+        var cv = currentStats.avgValue ? (currentStats.stdDev / currentStats.avgValue * 100) : null;
+
+        var pctHtml = '<div style="margin-top:8px;"><h5 style="font-size:11px;color:#aaa;margin-bottom:4px;"><i class="fas fa-percent"></i> 百分位数统计</h5>';
+        pctHtml += '<div class="percentile-row"><span>Q1 (25%)</span><span class="pct-val">' + q1.toFixed(4) + '</span></div>';
+        pctHtml += '<div class="percentile-row"><span>Median (50%)</span><span class="pct-val">' + q2.toFixed(4) + '</span></div>';
+        pctHtml += '<div class="percentile-row"><span>Q3 (75%)</span><span class="pct-val">' + q3.toFixed(4) + '</span></div>';
+        pctHtml += '<div class="percentile-row"><span>IQR</span><span class="pct-val">' + iqr.toFixed(4) + '</span></div>';
+        if (cv !== null) {
+            pctHtml += '<div class="percentile-row"><span>变异系数 (CV)</span><span class="pct-val">' + cv.toFixed(2) + '%</span></div>';
+        }
+        pctHtml += '</div>';
+        document.getElementById('percentileStats').innerHTML = pctHtml;
+        renderHistogram(sorted);
+    }
+
+    function renderHistogram(sorted) {
+        var n = sorted.length;
+        var min = sorted[0], max = sorted[n - 1];
+        if (max === min) return;
+        var k = Math.max(5, Math.min(20, Math.ceil(3.322 * Math.log10(n) + 1)));
+        var binWidth = (max - min) / k;
+        var bins = new Array(k).fill(0);
+        var binStarts = [];
+        for (var i = 0; i < k; i++) binStarts.push(min + i * binWidth);
+        sorted.forEach(function(v) {
+            var bi = Math.min(k - 1, Math.floor((v - min) / binWidth));
+            bins[bi]++;
+        });
+        var maxCount = Math.max.apply(null, bins);
+
+        var histoHtml = '<div class="histogram-container"><h5><i class="fas fa-chart-bar"></i> 数值分布直方图</h5>';
+        histoHtml += '<div class="histogram-bars">';
+        bins.forEach(function(count) {
+            var h = maxCount > 0 ? Math.max(3, (count / maxCount) * 100) : 0;
+            histoHtml += '<div class="histo-bar" style="height:' + h + '%;" title="' + count + ' 个地块"></div>';
+        });
+        histoHtml += '</div><div class="histogram-labels">';
+        binStarts.forEach(function(bs, i) {
+            var label = bs.toFixed(3);
+            if (i === 0 || i === k - 1 || i % Math.ceil(k / 6) === 0) {
+                histoHtml += '<span>' + label + '</span>';
+            } else {
+                histoHtml += '<span></span>';
+            }
+        });
+        histoHtml += '</div></div>';
+        document.getElementById('histogramContainer').innerHTML = histoHtml;
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 8C: SORTABLE TABLE
+    // ──────────────────────────────────────────────────
+    function sortTable(column) {
+        if (!currentStats || !currentStats.rows || currentStats.rows.length === 0) return;
+        if (_sortState.column === column) {
+            _sortState.direction = _sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            _sortState.column = column;
+            _sortState.direction = column === 'index' ? 'asc' : 'desc';
+        }
+        var dir = _sortState.direction;
+        currentStats.rows.sort(function(a, b) {
+            var va, vb;
+            if (column === 'index') { va = a.index; vb = b.index; }
+            else if (column === 'area_mu') { va = a.area_mu; vb = b.area_mu; }
+            else if (column === 'value') {
+                va = a.value !== null ? a.value : -Infinity;
+                vb = b.value !== null ? b.value : -Infinity;
+            }
+            if (va < vb) return dir === 'asc' ? -1 : 1;
+            if (va > vb) return dir === 'asc' ? 1 : -1;
+            return 0;
+        });
+        renderStatsPanel();
+        renderSheetStats();
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 8D: MULTI-CONDITION FILTERING
+    // ──────────────────────────────────────────────────
+    function addSecondFilter() {
+        _secondFilterActive = true;
+        document.getElementById('multiFilterSection').style.display = 'block';
+        document.getElementById('addFilterBtn').style.display = 'none';
+        var theme = CONFIG.themes[currentThemeKey];
+        var sel = document.getElementById('filterField2');
+        sel.innerHTML = '<option value="">选择字段</option>';
+        (theme.attributeFields || []).forEach(function(f) {
+            sel.innerHTML += '<option value="' + f + '">' + f + '</option>';
+        });
+        if (theme.valueField) sel.value = theme.valueField;
+        applyFilter();
+    }
+
+    function removeSecondFilter() {
+        _secondFilterActive = false;
+        document.getElementById('multiFilterSection').style.display = 'none';
+        document.getElementById('addFilterBtn').style.display = 'block';
+        applyFilter();
+    }
+
+    function toggleFilterLogic() {
+        _filterLogic = _filterLogic === 'AND' ? 'OR' : 'AND';
+        var btn = document.getElementById('filterLogicBtn');
+        btn.textContent = _filterLogic;
+        if (_filterLogic === 'OR') btn.classList.add('logic-or');
+        else btn.classList.remove('logic-or');
+        applyFilter();
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 8E: COUNTY QUICK-SELECT
+    // ──────────────────────────────────────────────────
+    function initCountySelect() {
+        var counties = CONFIG.counties && CONFIG.counties.list ? CONFIG.counties.list.slice() : [];
+        _countyNames.forEach(function(c) { if (counties.indexOf(c) < 0) counties.push(c); });
+        counties.sort();
+        var optionsHtml = '<option value="">-- 选择县域快速查询 (' + counties.length + '个) --</option>';
+        counties.forEach(function(c) {
+            optionsHtml += '<option value="' + c + '">' + c + '</option>';
+        });
+        // Update both county selects
+        var sel1 = document.getElementById('countySelect');
+        var sel2 = document.getElementById('countySelect2');
+        if (sel1) sel1.innerHTML = optionsHtml;
+        if (sel2) sel2.innerHTML = optionsHtml;
+        var theme = CONFIG.themes[currentThemeKey];
+        var hasCounty = theme.wfsLayer && theme.wfsLayer !== 'fjsoil:xianqu';
+        document.getElementById('countySelectRow').style.display = hasCounty ? 'block' : 'none';
+        // Show/hide quick filter slider
+        var ft = theme.filterThresholds;
+        var sliderRow = document.getElementById('qqSliderRow');
+        if (sliderRow) {
+            sliderRow.style.display = (ft && theme.valueField) ? 'flex' : 'none';
+            if (ft) {
+                document.getElementById('quickFilterOp').value = ft.operator;
+                var slider = document.getElementById('quickFilterSlider');
+                slider.min = ft.min; slider.max = ft.max; slider.step = ft.step;
+                var threshold = currentFilterValue !== null ? currentFilterValue : ft.defaultThreshold;
+                slider.value = threshold;
+                document.getElementById('quickFilterVal').textContent = threshold.toFixed(ft.step < 1 ? 3 : 1);
+            }
+        }
+    }
+
+    function onQuickSlider(val) {
+        var v = parseFloat(val);
+        var ft = CONFIG.themes[currentThemeKey].filterThresholds;
+        var decimals = ft && ft.step < 1 ? 3 : 1;
+        document.getElementById('quickFilterVal').textContent = v.toFixed(decimals);
+    }
+
+    function applyQuickFilter() {
+        var op = document.getElementById('quickFilterOp').value;
+        var val = parseFloat(document.getElementById('quickFilterSlider').value);
+        currentFilterValue = val;
+        // Sync with main filter
+        if (document.getElementById('filterOp')) document.getElementById('filterOp').value = op;
+        if (document.getElementById('filterSlider')) {
+            document.getElementById('filterSlider').value = val;
+            document.getElementById('filterVal').textContent = val.toFixed(3);
+        }
+        if (document.getElementById('sheetFilterOp')) document.getElementById('sheetFilterOp').value = op;
+        if (document.getElementById('sheetFilterSlider')) {
+            document.getElementById('sheetFilterSlider').value = val;
+        }
+        // If we have features, apply locally; otherwise trigger query
+        if (currentFeatures.length > 0) {
+            applyFilter();
+        } else {
+            queryCurrentMapBounds();
+        }
+    }
+
+    function updateQuickResult() {
+        var el = document.getElementById('quickResult');
+        var text = document.getElementById('quickResultText');
+        if (!el || !text) return;
+        if (currentStats && currentFeatures.length > 0) {
+            el.style.display = 'flex';
+            var s = currentStats;
+            var parts = [];
+            parts.push(s.featureCount + ' 块');
+            parts.push(s.totalArea_mu.toFixed(2) + ' 亩');
+            if (s.filteredCount > 0 && s.filteredCount !== s.featureCount) {
+                parts.push('筛选: ' + s.filteredCount + ' 块 / ' + s.filteredArea_mu.toFixed(2) + ' 亩');
+            }
+            text.textContent = parts.join(' | ');
+        } else {
+            el.style.display = 'none';
+        }
+    }
+
+    function getCountyField() {
+        var theme = CONFIG.themes[currentThemeKey];
+        var map = CONFIG.counties.fieldMap || {};
+        return map[theme.wfsLayer] || '县名称';
+    }
+
+    function buildCqlFilter(field, value) {
+        // 中文字段名需要用双引号包裹
+        var needQuote = /[一-鿿]/.test(field);
+        var f = needQuote ? '\"' + field + '\"' : field;
+        return f + "='" + value.replace(/'/g, "''") + "'";
+    }
+
+    function onCountySelect(countyName) {
+        if (!countyName) { clearCountySelect(); return; }
+        _selectedCounty = countyName;
+        var field = getCountyField();
+        var cql = buildCqlFilter(field, countyName);
+        // 县域查询不限制bbox，查询全县范围
+        clearSelection();
+        runWFSQuery(null, cql, true);
+        // Sync both county selects
+        if (document.getElementById('countySelect').value !== countyName) {
+            document.getElementById('countySelect').value = countyName;
+        }
+        if (document.getElementById('countySelect2').value !== countyName) {
+            document.getElementById('countySelect2').value = countyName;
+        }
+        if (isMobile) switchSheetTab('stats');
+    }
+
+    function clearCountySelect() {
+        _selectedCounty = null;
+        var sel1 = document.getElementById('countySelect');
+        var sel2 = document.getElementById('countySelect2');
+        if (sel1) sel1.value = '';
+        if (sel2) sel2.value = '';
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 8F: MEASUREMENT TOOLS
+    // ──────────────────────────────────────────────────
+    function toggleMeasureMode(mode) {
+        if (_measureMode === mode) { finishMeasureMode(); return; }
+        if (drawState === 'drawing') cancelDrawing();
+        if (drawState === 'drawn') clearSelection();
+        if (_measureMode) finishMeasureMode();
+
+        _measureMode = mode;
+        _measurePoints = [];
+        _measureLayer = null;
+        _measureMarkers = [];
+        _measureTooltip = null;
+        map.getContainer().classList.add('map-measuring');
+        updateMeasureButtonStates();
+        if (isMobile) showError('请在地图上点击添加测量点，双击完成');
+    }
+
+    function updateMeasureButtonStates() {
+        var distBtn = document.getElementById('btnMeasureDist');
+        var areaBtn = document.getElementById('btnMeasureArea');
+        var distFab = document.getElementById('fabMeasureDist');
+        var areaFab = document.getElementById('fabMeasureArea');
+        if (distBtn) {
+            distBtn.classList.toggle('active-tool', _measureMode === 'distance');
+            if (_measureMode === 'distance') {
+                distBtn.innerHTML = '<i class="fas fa-ruler"></i> 测距中... (双击完成)';
+            } else {
+                distBtn.innerHTML = '<i class="fas fa-ruler"></i> 测距';
+            }
+        }
+        if (areaBtn) {
+            areaBtn.classList.toggle('active-tool', _measureMode === 'area');
+            if (_measureMode === 'area') {
+                areaBtn.innerHTML = '<i class="fas fa-draw-polygon"></i> 测面积中... (双击完成)';
+            } else {
+                areaBtn.innerHTML = '<i class="fas fa-draw-polygon"></i> 测面积';
+            }
+        }
+        if (distFab) distFab.classList.toggle('active-fab', _measureMode === 'distance');
+        if (areaFab) areaFab.classList.toggle('active-fab', _measureMode === 'area');
+    }
+
+    function finishMeasureMode() {
+        if (_measureLayer) { map.removeLayer(_measureLayer); _measureLayer = null; }
+        _measureMarkers.forEach(function(m) { map.removeLayer(m); });
+        _measureMarkers = [];
+        if (_measureTooltip) { map.removeLayer(_measureTooltip); _measureTooltip = null; }
+        _measurePoints = [];
+        _measureMode = null;
+        map.getContainer().classList.remove('map-measuring');
+        updateMeasureButtonStates();
+    }
+
+    function handleMeasureClick(e) {
+        if (!_measureMode) return;
+        _measurePoints.push([e.latlng.lng, e.latlng.lat]);
+
+        var marker = L.circleMarker(e.latlng, {
+            radius: 5, color: '#e67e22', fillColor: '#ffb347',
+            fillOpacity: 0.7, weight: 2
+        }).addTo(map);
+        _measureMarkers.push(marker);
+
+        if (_measureLayer) map.removeLayer(_measureLayer);
+        if (_measureMode === 'distance') {
+            _measureLayer = L.polyline(_measurePoints.map(function(p) { return [p[1], p[0]]; }), {
+                color: '#ff9800', weight: 3, dashArray: '8 4', interactive: false
+            }).addTo(map);
+            if (_measurePoints.length >= 2) {
+                var dist = turf.length(turf.lineString(_measurePoints), { units: 'kilometers' });
+                updateMeasureTooltip(e.latlng, dist.toFixed(3) + ' km (' + (dist * 1000).toFixed(0) + ' m)');
+            }
+        } else if (_measureMode === 'area') {
+            if (_measurePoints.length >= 3) {
+                var coords = _measurePoints.concat([_measurePoints[0]]);
+                _measureLayer = L.polygon(coords.map(function(p) { return [p[1], p[0]]; }), {
+                    color: '#ff9800', weight: 2, fillColor: '#ff9800',
+                    fillOpacity: 0.15, interactive: false, dashArray: '6 3'
+                }).addTo(map);
+                try {
+                    var poly = turf.polygon([coords]);
+                    var areaSqm = turf.area(poly);
+                    var areaMu = areaSqm / 666.667;
+                    var label = areaSqm >= 10000
+                        ? (areaSqm / 10000).toFixed(3) + ' ha (' + areaMu.toFixed(2) + ' 亩)'
+                        : areaSqm.toFixed(1) + ' m² (' + areaMu.toFixed(2) + ' 亩)';
+                    updateMeasureTooltip(e.latlng, label);
+                } catch(ex) {}
+            } else {
+                _measureLayer = L.polyline(_measurePoints.map(function(p) { return [p[1], p[0]]; }), {
+                    color: '#ff9800', weight: 2, dashArray: '6 3', interactive: false
+                }).addTo(map);
+                updateMeasureTooltip(e.latlng, '点击继续添加顶点 (已' + _measurePoints.length + '点)');
+            }
+        }
+    }
+
+    function updateMeasureTooltip(latlng, text) {
+        if (_measureTooltip) map.removeLayer(_measureTooltip);
+        _measureTooltip = L.tooltip({
+            permanent: true, direction: 'top', offset: [0, -8],
+            className: 'measure-tooltip'
+        }).setContent(text).setLatLng(latlng).addTo(map);
+    }
+
+    function handleMeasureDblClick(e) {
+        if (!_measureMode) return;
+        L.DomEvent.stop(e);
+        if (_measureMode === 'distance' && _measurePoints.length >= 2) {
+            var dist = turf.length(turf.lineString(_measurePoints), { units: 'kilometers' });
+            showError('距离测量完成: ' + dist.toFixed(3) + ' km (' + (dist * 1000).toFixed(0) + ' m)');
+        } else if (_measureMode === 'area' && _measurePoints.length >= 3) {
+            var coords = _measurePoints.concat([_measurePoints[0]]);
+            var poly = turf.polygon([coords]);
+            var areaSqm = turf.area(poly);
+            var areaMu = areaSqm / 666.667;
+            showError('面积测量完成: ' + areaMu.toFixed(2) + ' 亩 (' + (areaSqm / 10000).toFixed(3) + ' 公顷)');
+        }
+        _measureMode = null;
+        map.getContainer().classList.remove('map-measuring');
+        updateMeasureButtonStates();
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 8G: COUNTY SEARCH (Attribute Panel)
+    // ──────────────────────────────────────────────────
+    function searchByCounty() {
+        var input = document.getElementById('countySearchInput');
+        var name = input.value.trim();
+        if (!name) { showError('请输入县区名称'); return; }
+        var theme = CONFIG.themes[currentThemeKey];
+        if (!theme.wfsLayer) { showError('当前专题不支持WFS查询'); return; }
+
+        var countyField = getCountyField();
+        var needQuote = /[一-鿿]/.test(countyField);
+        var fld = needQuote ? '\"' + countyField + '\"' : countyField;
+        var cql = fld + " LIKE '%" + name.replace(/'/g, "''") + "%'";
+        var params = new URLSearchParams({
+            service: 'WFS', version: CONFIG.wfs.version,
+            request: 'GetFeature', typeNames: theme.wfsLayer,
+            outputFormat: CONFIG.wfs.outputFormat,
+            srsName: 'EPSG:4326', count: CONFIG.wfs.maxFeatures
+        });
+        params.append('CQL_FILTER', cql);
+        var url = CONFIG.geoServer.wfsUrl + '?' + params.toString();
+
+        showLoading(true);
+        fetch(url, { mode: 'cors' })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function(data) {
+                showLoading(false);
+                if (data.type === 'FeatureCollection' && Array.isArray(data.features)) {
+                    var features = data.features;
+                    if (features.length === 0) {
+                        showAttrResults([], '未找到匹配 "' + name + '" 的要素');
+                    } else {
+                        showAttrResults(features);
+                        try {
+                            var bounds = L.geoJSON({ type: 'FeatureCollection', features: features }).getBounds();
+                            if (bounds.isValid()) map.flyToBounds(bounds, { padding: [40, 40], maxZoom: 14, duration: 0.8 });
+                            if (highlightLayer) map.removeLayer(highlightLayer);
+                            highlightLayer = L.geoJSON({ type: 'FeatureCollection', features: features }, {
+                                style: { color: '#4fc3f7', weight: 2, fillColor: '#4fc3f7', fillOpacity: 0.12 },
+                                className: 'click-highlight'
+                            }).addTo(map);
+                        } catch(ex) {}
+                    }
+                    features.forEach(function(f) {
+                        var props = f.properties || {};
+                        if (props[countyField]) _countyNames.add(props[countyField]);
+                    });
+                } else {
+                    showAttrResults([], '查询返回非预期格式');
+                }
+            })
+            .catch(function(err) {
+                showLoading(false);
+                showError('县域搜索失败: ' + err.message);
+            });
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 8H: GeoJSON EXPORT
+    // ──────────────────────────────────────────────────
+    function exportGeoJSON() {
+        if (!currentFeatures || currentFeatures.length === 0) {
+            showError('无数据可导出，请先进行框选查询');
+            return;
+        }
+        var geojson = {
+            type: 'FeatureCollection',
+            features: currentFeatures,
+            metadata: {
+                theme: CONFIG.themes[currentThemeKey].displayName,
+                exportTime: new Date().toISOString(),
+                totalFeatures: currentFeatures.length,
+                crs: 'EPSG:4326'
+            }
+        };
+        if (currentStats) {
+            geojson.metadata.statistics = {
+                totalArea_mu: currentStats.totalArea_mu,
+                avgValue: currentStats.avgValue,
+                minValue: currentStats.minValue,
+                maxValue: currentStats.maxValue,
+                filteredCount: currentStats.filteredCount,
+                filteredArea_mu: currentStats.filteredArea_mu
+            };
+        }
+        var blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/geo+json;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = '土壤数据_' + CONFIG.themes[currentThemeKey].displayName + '_' + new Date().toISOString().slice(0,10) + '.geojson';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 9B: HELP MODAL
+    // ──────────────────────────────────────────────────
+    function toggleHelp() {
+        var overlay = document.getElementById('helpOverlay');
+        overlay.classList.toggle('visible');
+    }
+
+    // ESC to close help
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            var overlay = document.getElementById('helpOverlay');
+            if (overlay.classList.contains('visible')) {
+                overlay.classList.remove('visible');
+            }
+        }
+    });
+
+    // ──────────────────────────────────────────────────
+    //  Section 10: DEBUG
+    // ──────────────────────────────────────────────────
+    function debugDump() {
+        const theme = CONFIG.themes[currentThemeKey];
+        console.group('🔍 调试信息 — 福建土壤专题信息系统');
+        console.table({
+            'GeoServer地址': CONFIG.geoServer.baseUrl,
+            '工作空间': CONFIG.geoServer.workspace,
+            'WMS地址': CONFIG.geoServer.wmsUrl,
+            'WFS地址': CONFIG.geoServer.wfsUrl,
+            '当前图层组': theme.fullName,
+            'WFS图层': theme.wfsLayer || '(未配置)',
+            '几何字段': theme.geometryField,
+            '数值字段': theme.valueField || '(无)',
+            '地图中心': map.getCenter(),
+            '缩放级别': map.getZoom(),
+            '框选状态': drawState,
+            '选中要素数': currentFeatures.length,
+            '移动端模式': isMobile,
+            'WMS测试': `${CONFIG.geoServer.wmsUrl}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities`,
+            'WFS测试': `${CONFIG.geoServer.wfsUrl}?service=WFS&version=2.0.0&request=GetCapabilities`
+        });
+        console.log('当前专题配置:', JSON.stringify(theme, null, 2));
+        if (currentStats) {
+            console.log('统计数据:', {
+                地块数: currentStats.featureCount,
+                总面积亩: currentStats.totalArea_mu.toFixed(2),
+                平均值: currentStats.avgValue,
+                筛选地块数: currentStats.filteredCount,
+                筛选面积亩: currentStats.filteredArea_mu.toFixed(2)
+            });
+        }
+        console.groupEnd();
+        alert('调试信息已输出到控制台 (F12)');
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Section 11: INITIALIZATION
+    // ──────────────────────────────────────────────────
+    function buildUI() {
+        // Desktop theme buttons
+        const group = document.getElementById('themeGroupDesktop');
+        group.innerHTML = '';
+        Object.entries(CONFIG.themes).forEach(([key, theme]) => {
+            const btn = document.createElement('button');
+            btn.className = `theme-btn${key === currentThemeKey ? ' active' : ''}`;
+            btn.setAttribute('data-group', key);
+            btn.innerHTML = `<i class="fas ${theme.icon}"></i> ${theme.displayName}`;
+            btn.addEventListener('click', () => switchTheme(key));
+            group.appendChild(btn);
+        });
+
+        // Desktop basemap buttons
+        const bmGroup = document.getElementById('basemapGroupDesktop');
+        bmGroup.innerHTML = '';
+        Object.entries(CONFIG.basemaps.options).forEach(([key, opt]) => {
+            const btn = document.createElement('button');
+            btn.className = `basemap-btn${key === CONFIG.basemaps.current ? ' active' : ''}`;
+            btn.setAttribute('data-basemap', key);
+            btn.innerHTML = `<i class="fas ${opt.icon}"></i> ${opt.name}`;
+            btn.addEventListener('click', () => switchBasemap(key));
+            bmGroup.appendChild(btn);
+        });
+
+        // Mobile theme buttons (inside sheet Info tab)
+        const themeBtnsDiv = document.getElementById('sheetThemeBtns');
+        let mobileThemeHtml = `<div style="font-size:12px;color:#ddd;margin-bottom:6px;font-weight:600;">专题图层</div>`;
+        Object.entries(CONFIG.themes).forEach(([key, theme]) => {
+            mobileThemeHtml += `
+                <button class="sheet-theme-btn${key === currentThemeKey ? ' active' : ''}"
+                        data-group="${key}"
+                        onclick="switchTheme('${key}')">
+                    <i class="fas ${theme.icon}"></i> ${theme.displayName}
+                </button>`;
+        });
+        // Mobile basemap buttons
+        mobileThemeHtml += `<div style="font-size:12px;color:#ddd;margin-top:12px;margin-bottom:6px;font-weight:600;">底图切换</div>`;
+        Object.entries(CONFIG.basemaps.options).forEach(([key, opt]) => {
+            mobileThemeHtml += `
+                <button class="sheet-theme-btn sheet-basemap-btn${key === CONFIG.basemaps.current ? ' active' : ''}"
+                        data-basemap="${key}"
+                        onclick="switchBasemap('${key}')">
+                    <i class="fas ${opt.icon}"></i> ${opt.name}
+                </button>`;
+        });
+        themeBtnsDiv.innerHTML = mobileThemeHtml;
+
+        // Mobile info meta
+        document.getElementById('sheetInfoMeta').innerHTML =
+            `<div style="font-size:11px;color:#888;margin-top:8px;">
+                <div><span id="sheetInfoThemeName">${CONFIG.themes[currentThemeKey].displayName}</span> | WGS84</div>
+                <div style="margin-top:4px;color:#aaa;">点击地图查看属性，或使用框选/当前视图统计功能。</div>
+            </div>`;
+
+        updateSheetLegend();
+    }
+
+    function init() {
+        buildUI();
+        updateLegend();
+        initDrawHandlers();
+        initBottomSheet();
+        applyLayout();
+
+        // Map click for attribute query (only when not drawing)
+        map.on('click', handleMapClick);
+
+        // Sheet tab switching
+        document.querySelectorAll('.sheet-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                switchSheetTab(tab.getAttribute('data-tab'));
+            });
+        });
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            applyLayout();
+            updateLegend();
+            updateSheetLegend();
+        });
+
+        // Initialize county selector
+        initCountySelect();
+
+        // Set up measurement handlers
+        map.on('dblclick', handleMeasureDblClick);
+
+        // GeoServer health check with banner
+        window.addEventListener('load', function() {
+            fetch(CONFIG.geoServer.wmsUrl + '?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities', { mode: 'cors' })
+                .then(function() { console.log('GeoServer连接正常'); })
+                .catch(function() {
+                    console.warn('GeoServer未响应，请确认服务已启动');
+                    var banner = document.getElementById('gsBanner');
+                    if (banner) banner.classList.add('visible');
+                });
+        });
+
+        console.log('✅ 福建土壤专题信息系统 已就绪 (增强版)');
+        console.log('   - 点击地图: 属性查询 (GetFeatureInfo)');
+        console.log('   - 框选按钮: 拉框统计 (WFS)');
+        console.log('   - 专题切换: 3种图层');
+        console.log('   - 县域选择: 快速查询整县数据');
+        console.log('   - 测量工具: 距离/面积测量');
+        console.log('   - 高级统计: 百分位数、直方图、排序');
+        console.log('   - 导出: CSV + GeoJSON');
+        console.log('   - 移动端: ≤768px 自动切换底部面板');
+    }
+
+    // Go!
+    init();
+    </script>
+</body>
+</html>
